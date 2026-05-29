@@ -7,7 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="The Weather Centre"/>
-  <title>The Weather Centre</title>
+  <title>The Weather Centre — Live Weather Forecasts</title>
+  <meta name="description" content="Free live weather forecasts for any location worldwide. 13-day forecasts, hourly breakdowns, radar maps, UV index, feels-like temperatures and more."/>
+  <meta name="keywords" content="weather forecast, weather centre, live weather, rain radar, UV index, hourly forecast"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -1031,7 +1033,17 @@ function App(){
   var latState=useState(51.5074);var iLat=latState[0];var setLat=latState[1];
   var lonState=useState(-0.1278);var iLon=lonState[0];var setLon=lonState[1];
 
-  useEffect(function(){fetchByName("London");},[]);
+  // On load: check URL for ?location=X parameter, otherwise default to London
+  useEffect(function(){
+    var params=new URLSearchParams(window.location.search);
+    var locParam=params.get("location");
+    if(locParam&&locParam.trim()){
+      setSt(locParam.trim());
+      fetchByName(locParam.trim());
+    }else{
+      fetchByName("London");
+    }
+  },[]);
 
   // Close dropdown when clicking outside
   useEffect(function(){
@@ -1099,7 +1111,12 @@ function App(){
       setFd(data);
       setLat(place.latitude);
       setLon(place.longitude);
-      setLn(place.name+(place.admin1?", "+place.admin1:"")+(place.country_code?", "+place.country_code:""));
+      var displayName=place.name+(place.admin1?", "+place.admin1:"")+(place.country_code?", "+place.country_code:"");
+      setLn(displayName);
+      // Update URL so the location is shareable/indexable e.g. ?location=Braintree
+      var newUrl=window.location.pathname+"?location="+encodeURIComponent(place.name);
+      window.history.pushState({location:place.name},place.name+" Weather — The Weather Centre",newUrl);
+      document.title=place.name+" Weather Forecast — The Weather Centre";
       var first=new Date(days.time[0]+"T12:00:00"),last=new Date(days.time[days.time.length-1]+"T12:00:00");
       setDr(first.toLocaleDateString("en-GB",{day:"numeric",month:"short"})+" - "+last.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}));
     }catch(e){setErr("Could not load forecast. Check your connection and try again.");}
