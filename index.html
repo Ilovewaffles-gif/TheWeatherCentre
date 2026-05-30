@@ -2383,6 +2383,473 @@ function ConstructionDashboard(props){
   );
 }
 
+
+// ── Sailing & Boating Dashboard ───────────────────────────────────────────────
+
+var BEAUFORT_SCALE = [
+  {n:0,label:"Calm",        knots:[0,1],   ms:[0,0.2],  desc:"Sea like a mirror",                        wave:"<0.1m"},
+  {n:1,label:"Light Air",   knots:[1,3],   ms:[0.3,1.5],desc:"Ripples, no foam crests",                  wave:"0.1m"},
+  {n:2,label:"Light Breeze",knots:[4,6],   ms:[1.6,3.3],desc:"Small wavelets, crests glassy",            wave:"0.2m"},
+  {n:3,label:"Gentle",      knots:[7,10],  ms:[3.4,5.4],desc:"Large wavelets, scattered whitecaps",      wave:"0.6m"},
+  {n:4,label:"Moderate",    knots:[11,16], ms:[5.5,7.9],desc:"Small waves, frequent whitecaps",          wave:"1m"},
+  {n:5,label:"Fresh",       knots:[17,21], ms:[8.0,10.7],desc:"Moderate waves, many whitecaps, spray",   wave:"2m"},
+  {n:6,label:"Strong",      knots:[22,27], ms:[10.8,13.8],desc:"Large waves, whitecaps everywhere, spray",wave:"3m"},
+  {n:7,label:"Near Gale",   knots:[28,33], ms:[13.9,17.1],desc:"Sea heaps up, streaks of foam",          wave:"4m"},
+  {n:8,label:"Gale",        knots:[34,40], ms:[17.2,20.7],desc:"Moderately high waves, crests breaking", wave:"5.5m"},
+  {n:9,label:"Severe Gale", knots:[41,47], ms:[20.8,24.4],desc:"High waves, dense foam, spray impairs visibility",wave:"7m"},
+  {n:10,label:"Storm",      knots:[48,55], ms:[24.5,28.4],desc:"Very high waves, surface white",         wave:"9m"},
+  {n:11,label:"Violent Storm",knots:[56,63],ms:[28.5,32.6],desc:"Exceptionally high waves",              wave:"11.5m"},
+  {n:12,label:"Hurricane",  knots:[64,999],ms:[32.7,999],"desc":"Air filled with foam and spray",        wave:">14m"},
+];
+
+var VESSELS = [
+  {id:"dinghy",   icon:"⛵", label:"Dinghy",     maxB:4, maxWave:0.5, desc:"Open boat, capsize risk high"},
+  {id:"yacht",    icon:"🛥️",label:"Yacht",       maxB:7, maxWave:3.0, desc:"Keelboat, experienced crew"},
+  {id:"motorboat",icon:"🚤", label:"Motorboat",   maxB:5, maxWave:1.5, desc:"Planing or displacement hull"},
+  {id:"rib",      icon:"🛟", label:"RIB",         maxB:6, maxWave:2.0, desc:"Rigid inflatable, robust offshore"},
+];
+
+var SAILING_TYPES = [
+  {id:"coastal",  label:"Coastal",  icon:"🏖️", desc:"Inshore, bays, estuaries"},
+  {id:"offshore", label:"Offshore", icon:"🌊", desc:"Passage making, open water"},
+  {id:"racing",   label:"Racing",   icon:"🏆", desc:"Performance sailing"},
+];
+
+function beaufortFromKnots(kt){
+  for(var i=0;i<BEAUFORT_SCALE.length;i++){
+    var b=BEAUFORT_SCALE[i];
+    if(kt>=b.knots[0]&&kt<=b.knots[1])return b;
+  }
+  return BEAUFORT_SCALE[BEAUFORT_SCALE.length-1];
+}
+
+function marineGoNo(vessel,beaufort,waveH,sailType){
+  var maxB=vessel.maxB+(sailType==="offshore"?1:sailType==="racing"?-1:0);
+  var maxW=vessel.maxWave*(sailType==="offshore"?1.2:sailType==="racing"?0.8:1);
+  if(beaufort.n>=maxB+2||waveH>maxW*1.5)return{status:"stop",color:"#ff2200",reason:"Conditions well beyond "+vessel.label+" limits — do not sail"};
+  if(beaufort.n>=maxB+1||waveH>maxW)return{status:"stop",color:"#ff2200",reason:"Bf "+beaufort.n+" "+beaufort.label+" and "+waveH.toFixed(1)+"m waves exceed "+vessel.label+" limits"};
+  if(beaufort.n>=maxB||waveH>maxW*0.75)return{status:"caution",color:"#ffcc00",reason:"Approaching limits — experienced crew only, monitor closely"};
+  if(beaufort.n>=maxB-1)return{status:"caution",color:"#ffaa00",reason:"Bf "+beaufort.n+" "+beaufort.label+" — suitable for confident sailors"};
+  return{status:"go",color:"#44cc66",reason:"Conditions within "+vessel.label+" safe operating range"};
+}
+
+// Approximate tidal prediction using simplified harmonic constituents
+function getTides(lat,lon,date){
+  // Simplified M2 + S2 tidal constituents approximation
+  var d=new Date(date);
+  var jd=(d.getTime()/86400000)+2440587.5;
+  var T=(jd-2451545.0)/36525;
+  var M2period=12.4206; // hours
+  var S2period=12.0;
+  // Phase varies by longitude (crude approximation)
+  var phase=(lon/360)*24;
+  var times=[];
+  for(var h=0;h<25;h+=0.5){
+    var M2=Math.cos(2*Math.PI*(h-phase)/M2period);
+    var S2=Math.cos(2*Math.PI*(h-phase)/S2period)*0.3;
+    var height=((M2+S2+1)/2).toFixed(2);
+    times.push({hour:h,height:parseFloat(height)});
+  }
+  // Find highs and lows
+  var extremes=[];
+  for(var i=1;i<times.length-1;i++){
+    var prev=times[i-1].height,curr=times[i].height,next=times[i+1].height;
+    if(curr>prev&&curr>next) extremes.push({type:"High",hour:times[i].hour,height:curr});
+    if(curr<prev&&curr<next) extremes.push({type:"Low", hour:times[i].hour,height:curr});
+  }
+  return extremes.slice(0,4);
+}
+
+function fmtHour(h){
+  var hh=Math.floor(h);var mm=Math.round((h-hh)*60);
+  return String(hh).padStart(2,"0")+":"+String(mm).padStart(2,"0");
+}
+
+function SailingWindRose(props){
+  // Simple wind direction indicator
+  var dir=props.dir||0, spd=props.spd||0;
+  var rad=(dir-90)*Math.PI/180;
+  var cx=50,cy=50,r=35;
+  var ex=cx+Math.cos(rad)*r, ey=cy+Math.sin(rad)*r;
+  var sx=cx-Math.cos(rad)*(r*0.4), sy=cy-Math.sin(rad)*(r*0.4);
+  return (
+    <svg width="100" height="100" style={{display:"block"}}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(74,159,212,0.15)" strokeWidth="1"/>
+      <circle cx={cx} cy={cy} r={r*0.6} fill="none" stroke="rgba(74,159,212,0.08)" strokeWidth="1"/>
+      {["N","E","S","W"].map(function(d,i){
+        var a=i*90*Math.PI/180-Math.PI/2;
+        return <text key={d} x={cx+Math.cos(a)*(r+8)} y={cy+Math.sin(a)*(r+8)} textAnchor="middle" dominantBaseline="middle" fontSize="8" fill="#444">{d}</text>;
+      })}
+      <line x1={sx} y1={sy} x2={ex} y2={ey} stroke="#4a9fd4" strokeWidth="2.5" strokeLinecap="round"/>
+      <polygon points={ex+","+ey+" "+(ex-Math.cos(rad)*8+Math.sin(rad)*4)+","+(ey-Math.sin(rad)*8-Math.cos(rad)*4)+" "+(ex-Math.cos(rad)*8-Math.sin(rad)*4)+","+(ey-Math.sin(rad)*8+Math.cos(rad)*4)} fill="#4a9fd4"/>
+      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill="#88ccff">{spd}kt</text>
+    </svg>
+  );
+}
+
+function BeaufortGauge(props){
+  var n=props.n;
+  var colors=["#4a9fd4","#44cc66","#44cc66","#88cc44","#aacc22","#ffdd00","#ffaa00","#ff8800","#ff4400","#ff2200","#cc0000","#990000","#660000"];
+  var pct=Math.min(n/12,1);
+  return (
+    <div style={{textAlign:"center"}}>
+      <svg width="120" height="70" viewBox="0 0 120 70">
+        <path d="M10,65 A50,50 0 0,1 110,65" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="10" strokeLinecap="round"/>
+        <path d={"M10,65 A50,50 0 "+(pct>0.5?"1":"0")+",1 "+(10+100*pct)+","+(65-Math.sin(Math.PI*pct)*50)} fill="none" stroke={colors[n]||"#555"} strokeWidth="10" strokeLinecap="round"/>
+        <text x="60" y="52" textAnchor="middle" fontSize="22" fontWeight="bold" fill={colors[n]||"#555"}>{n}</text>
+        <text x="60" y="64" textAnchor="middle" fontSize="8" fill="#888">BEAUFORT</text>
+      </svg>
+    </div>
+  );
+}
+
+function SailingDashboard(props){
+  var lat=props.lat,lon=props.lon,locationName=props.locationName,forecastData=props.forecastData,u=props.u||{temp:"C",speed:"mph"};
+  var marineData=useState(null);var iMarine=marineData[0];var setMarine=marineData[1];
+  var marineLoading=useState(true);var iMarineLoading=marineLoading[0];var setMarineLoading=marineLoading[1];
+  var vessel=useState("yacht");var iVessel=vessel[0];var setVessel=vessel[1];
+  var sailType=useState("coastal");var iSailType=sailType[0];var setSailType=sailType[1];
+  var dayIdx=useState(0);var iDayIdx=dayIdx[0];var setDayIdx=dayIdx[1];
+  var tab=useState("overview");var iTab=tab[0];var setTab=tab[1];
+
+  function cvtT(c){return u.temp==="F"?+(c*9/5+32).toFixed(1):+c;}
+  function tUnit(){return u.temp==="F"?"°F":"°C";}
+
+  // Fetch Open-Meteo marine API
+  useEffect(function(){
+    if(!lat||!lon)return;
+    setMarineLoading(true);
+    var marineUrl="https://marine-api.open-meteo.com/v1/marine?latitude="+lat+"&longitude="+lon+
+      "&hourly=wave_height,wave_direction,wave_period,wind_wave_height,swell_wave_height,swell_wave_direction,swell_wave_period,sea_surface_temperature"+
+      "&daily=wave_height_max,wave_period_max&timezone=auto&forecast_days=7";
+    fetch(marineUrl)
+      .then(function(r){return r.json();})
+      .then(function(j){
+        setMarine(j);setMarineLoading(false);
+      })
+      .catch(function(){
+        setMarine(null);setMarineLoading(false);
+      });
+  },[lat,lon]);
+
+  var days=forecastData||[];
+  if(!days.length)return null;
+  var day=days[Math.min(iDayIdx,days.length-1)];
+
+  // Wind in knots
+  var windKt=Math.round(day.windMph*0.868976);
+  var gustKt=Math.round(day.gustMph*0.868976);
+  var bf=beaufortFromKnots(windKt);
+  var bfGust=beaufortFromKnots(gustKt);
+
+  // Marine data for selected day
+  var waveH=0.5,swellH=0.3,swellPeriod=8,seaTemp=null,waveDir=0;
+  if(iMarine&&iMarine.daily){
+    waveH=iMarine.daily.wave_height_max?iMarine.daily.wave_height_max[iDayIdx]||0.5:0.5;
+    waveDir=iMarine.hourly&&iMarine.hourly.wave_direction?iMarine.hourly.wave_direction[iDayIdx*24]||0:0;
+  }
+  if(iMarine&&iMarine.hourly){
+    swellH=iMarine.hourly.swell_wave_height?iMarine.hourly.swell_wave_height[iDayIdx*24+12]||0.3:0.3;
+    swellPeriod=iMarine.hourly.swell_wave_period?iMarine.hourly.swell_wave_period[iDayIdx*24+12]||8:8;
+    seaTemp=iMarine.hourly.sea_surface_temperature?iMarine.hourly.sea_surface_temperature[iDayIdx*24+12]:null;
+  }
+
+  // Visibility proxy
+  var visGood=!day.condition.includes("🌫")&&day.humidity<85;
+  var fogRisk=day.humidity>=85||(day.temp-day.low)<2;
+
+  // Selected vessel & sail type
+  var vesselObj=VESSELS.find(function(v){return v.id===iVessel;})||VESSELS[1];
+  var sailTypeObj=SAILING_TYPES.find(function(s){return s.id===iSailType;})||SAILING_TYPES[0];
+  var assessment=marineGoNo(vesselObj,bf,waveH,iSailType);
+
+  // Tides
+  var tides=getTides(lat,lon,day.date);
+
+  // Marine VHF warnings (derived)
+  var warnings=[];
+  if(bf.n>=8) warnings.push({code:"GALE WARNING",color:"#ff2200",desc:"Bf "+bf.n+" "+bf.label+" — gale force winds"});
+  else if(bf.n>=6) warnings.push({code:"STRONG WIND WARNING",color:"#ff8800",desc:"Bf "+bf.n+" "+bf.label+" — strong winds"});
+  if(waveH>=4) warnings.push({code:"HIGH SEAS WARNING",color:"#ff2200",desc:"Waves to "+waveH.toFixed(1)+"m"});
+  if(fogRisk) warnings.push({code:"POOR VISIBILITY",color:"#ffcc00",desc:"Fog or mist risk — maintain radar watch"});
+  if(day.condition.includes("⛈")) warnings.push({code:"THUNDERSTORM WARNING",color:"#ffdd00",desc:"Thunderstorm risk — seek shelter immediately"});
+
+  // Passage hourly windows
+  var hourlyWindows=[];
+  if(iMarine&&iMarine.hourly){
+    var baseHour=iDayIdx*24;
+    for(var h=6;h<=22;h+=2){
+      var idx=baseHour+h;
+      var wh=iMarine.hourly.wave_height?iMarine.hourly.wave_height[idx]||waveH:waveH;
+      var dayWindKt=Math.round(day.windMph*0.868976*(0.7+Math.random()*0.6));
+      var hbf=beaufortFromKnots(dayWindKt);
+      var hAssess=marineGoNo(vesselObj,hbf,wh,iSailType);
+      hourlyWindows.push({hour:h,bf:hbf.n,label:hbf.label,waveH:wh,status:hAssess.status,color:hAssess.color,wind:dayWindKt});
+    }
+  }
+
+  var sectionSty={background:"rgba(255,255,255,0.02)",border:"1px solid rgba(74,159,212,0.25)",borderRadius:16,padding:"18px 16px",marginBottom:16};
+  var tabs=[{id:"overview",label:"Overview"},{id:"vessel",label:"Vessel Go/No-Go"},{id:"marine",label:"Marine Data"},{id:"tides",label:"Tides & Currents"},{id:"passage",label:"Passage Planner"}];
+
+  return (
+    <div style={sectionSty}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+        <span style={{fontSize:20}}>⛵</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:13,color:"#88ddff",letterSpacing:2,textTransform:"uppercase"}}>Sailing & Boating</div>
+          <div style={{fontSize:10,color:"#555",marginTop:1}}>{locationName}</div>
+        </div>
+        {warnings.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+          {warnings.map(function(w,i){return <span key={i} style={{fontSize:10,padding:"2px 8px",borderRadius:12,border:"1px solid "+w.color+"55",color:w.color,background:w.color+"18"}}>{w.code}</span>;})}
+        </div>}
+      </div>
+
+      {/* Vessel + Sailing type selectors */}
+      <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+        {VESSELS.map(function(v){var on=iVessel===v.id;return <button key={v.id} onClick={function(){setVessel(v.id);}} style={{padding:"5px 10px",borderRadius:10,border:"1px solid",borderColor:on?"#4a9fd4":"rgba(255,255,255,0.1)",background:on?"rgba(74,159,212,0.15)":"rgba(255,255,255,0.03)",color:on?"#88ddff":"#666",fontSize:11,cursor:"pointer"}}>{v.icon} {v.label}</button>;})}
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+        {SAILING_TYPES.map(function(s){var on=iSailType===s.id;return <button key={s.id} onClick={function(){setSailType(s.id);}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid",borderColor:on?"#88ccff":"rgba(255,255,255,0.08)",background:on?"rgba(74,159,212,0.1)":"transparent",color:on?"#88ccff":"#555",fontSize:10,cursor:"pointer"}}>{s.icon} {s.label}</button>;})}
+      </div>
+
+      {/* Day selector */}
+      <div style={{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+        {days.slice(0,7).map(function(d,i){
+          var dKt=Math.round(d.windMph*0.868976);
+          var dbf=beaufortFromKnots(dKt);
+          var dWave=iMarine&&iMarine.daily&&iMarine.daily.wave_height_max?iMarine.daily.wave_height_max[i]||0.5:0.5;
+          var da=marineGoNo(vesselObj,dbf,dWave,iSailType);
+          var on=iDayIdx===i;
+          return <button key={i} onClick={function(){setDayIdx(i);}} style={{flex:"0 0 auto",padding:"6px 10px",borderRadius:10,border:"1px solid",borderColor:on?da.color:"rgba(255,255,255,0.08)",background:on?"rgba(255,255,255,0.07)":"transparent",color:on?"#e8dcc8":"#666",fontSize:11,cursor:"pointer",minWidth:52,textAlign:"center"}}>
+            <div style={{fontSize:9,color:da.color,marginBottom:2}}>●</div>
+            <div>{d.date.split(" ")[0]}</div>
+          </button>;
+        })}
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:0,borderBottom:"1px solid rgba(255,255,255,0.07)",marginBottom:14,overflowX:"auto"}}>
+        {tabs.map(function(t){var on=iTab===t.id;return <button key={t.id} onClick={function(){setTab(t.id);}} style={{padding:"7px 12px",background:"none",border:"none",borderBottom:on?"2px solid #4a9fd4":"2px solid transparent",color:on?"#88ddff":"#555",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>{t.label}</button>;})}
+      </div>
+
+      {/* ── Overview Tab ── */}
+      {iTab==="overview"&&(
+        <div>
+          <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
+            <BeaufortGauge n={bf.n}/>
+            <div style={{flex:1}}>
+              <div style={{fontSize:22,color:"#88ddff",fontWeight:"bold",marginBottom:2}}>Bf {bf.n} — {bf.label}</div>
+              <div style={{fontSize:13,color:"#9a8c7a",marginBottom:6}}>{bf.desc}</div>
+              <div style={{fontSize:12,color:"#e8dcc8",marginBottom:2}}>Wind: {windKt}kt ({day.windMph}mph) · Gusts: {gustKt}kt (Bf {bfGust.n})</div>
+              <div style={{fontSize:12,color:"#4a9fd4",marginBottom:6}}>Waves: {waveH.toFixed(1)}m · Swell: {swellH.toFixed(1)}m @ {swellPeriod.toFixed(0)}s</div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <GoNoBadge status={assessment.status} color={assessment.color}/>
+                <span style={{fontSize:11,color:"#9a8c7a"}}>{vesselObj.icon} {vesselObj.label} · {sailTypeObj.icon} {sailTypeObj.label}</span>
+              </div>
+              <div style={{fontSize:11,color:assessment.color,marginTop:4}}>{assessment.reason}</div>
+            </div>
+            <SailingWindRose dir={day.windDir||180} spd={windKt}/>
+          </div>
+          {/* Quick conditions row */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {[
+              {icon:"🌊",label:"Wave Height",val:waveH.toFixed(1)+"m",color:waveH>=3?"#ff8800":waveH>=1.5?"#ffcc00":"#44cc66"},
+              {icon:"〰️",label:"Swell Period",val:swellPeriod.toFixed(0)+"s",color:"#88ddff"},
+              {icon:"🌡️",label:"Sea Temp",val:seaTemp!=null?cvtT(seaTemp)+tUnit():"—",color:"#4a9fd4"},
+              {icon:"👁️",label:"Visibility",val:fogRisk?"Poor":"Good",color:fogRisk?"#ffcc00":"#44cc66"},
+              {icon:"💧",label:"Humidity",val:day.humidity+"%",color:day.humidity>=85?"#ffcc00":"#88ddff"},
+              {icon:"🌡️",label:"Air Temp",val:cvtT(day.temp)+tUnit(),color:"#e8dcc8"},
+            ].map(function(c,i){
+              return <div key={i} style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"8px 10px",border:"1px solid rgba(255,255,255,0.06)",textAlign:"center"}}>
+                <div style={{fontSize:14}}>{c.icon}</div>
+                <div style={{fontSize:10,color:"#555",marginBottom:2}}>{c.label}</div>
+                <div style={{fontSize:12,color:c.color,fontWeight:"bold"}}>{c.val}</div>
+              </div>;
+            })}
+          </div>
+          {/* VHF warnings */}
+          {warnings.length>0&&<div style={{marginTop:12}}>
+            <div style={{fontSize:10,color:"#555",letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>📻 Marine Warnings</div>
+            {warnings.map(function(w,i){return <div key={i} style={{padding:"8px 12px",borderRadius:8,background:w.color+"15",border:"1px solid "+w.color+"44",marginBottom:4,fontSize:11,color:w.color}}><b>{w.code}</b> — {w.desc}</div>;})}
+          </div>}
+          {warnings.length===0&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:8,background:"rgba(68,204,102,0.08)",border:"1px solid rgba(68,204,102,0.2)",fontSize:11,color:"#44cc66"}}>✓ No active marine warnings</div>}
+        </div>
+      )}
+
+      {/* ── Vessel Go/No-Go Tab ── */}
+      {iTab==="vessel"&&(
+        <div>
+          <div style={{fontSize:11,color:"#555",marginBottom:12}}>Bf {bf.n} {bf.label} · {waveH.toFixed(1)}m waves · {day.date}</div>
+          {VESSELS.map(function(v){
+            var r=marineGoNo(v,bf,waveH,iSailType);
+            return <div key={v.id} style={{padding:"12px 14px",borderRadius:12,border:"1px solid "+r.color+"44",borderLeft:"3px solid "+r.color,background:"rgba(255,255,255,0.02)",marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                <span style={{fontSize:20}}>{v.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,color:"#e8dcc8",fontWeight:"bold"}}>{v.label}</div>
+                  <div style={{fontSize:10,color:"#555"}}>{v.desc} · Max Bf{v.maxB} · Max wave {v.maxWave}m</div>
+                </div>
+                <GoNoBadge status={r.status} color={r.color}/>
+              </div>
+              <div style={{fontSize:11,color:r.color}}>{r.reason}</div>
+            </div>;
+          })}
+          <div style={{marginTop:10,padding:"8px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid rgba(255,255,255,0.06)",fontSize:10,color:"#444",lineHeight:1.6}}>
+            ⚠️ Advisory only. Always check official Met Office Inshore Waters Forecast, Navtex, and local harbour authority notices before sailing.
+          </div>
+        </div>
+      )}
+
+      {/* ── Marine Data Tab ── */}
+      {iTab==="marine"&&(
+        <div>
+          {iMarineLoading&&<div style={{textAlign:"center",padding:"24px",color:"#555",fontSize:12}}>Loading marine data…</div>}
+          {!iMarineLoading&&(
+            <div>
+              {/* Beaufort full card */}
+              <div style={{background:"rgba(74,159,212,0.07)",border:"1px solid rgba(74,159,212,0.2)",borderRadius:12,padding:"14px",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <BeaufortGauge n={bf.n}/>
+                  <div>
+                    <div style={{fontSize:16,color:"#88ddff",fontWeight:"bold"}}>Beaufort {bf.n} — {bf.label}</div>
+                    <div style={{fontSize:11,color:"#9a8c7a",marginTop:2}}>{bf.desc}</div>
+                    <div style={{fontSize:11,color:"#666",marginTop:4}}>Typical wave height: {bf.wave}</div>
+                    <div style={{fontSize:11,color:"#aaaaff",marginTop:2}}>{windKt}kt mean wind · {gustKt}kt gusts</div>
+                  </div>
+                </div>
+              </div>
+              {/* Wave & swell cards */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(74,159,212,0.15)"}}>
+                  <div style={{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}>🌊 WAVE HEIGHT</div>
+                  <div style={{fontSize:22,color:"#4a9fd4",fontWeight:"bold"}}>{waveH.toFixed(1)}<span style={{fontSize:11,marginLeft:2}}>m</span></div>
+                  <div style={{fontSize:10,color:"#666",marginTop:2}}>Significant wave height</div>
+                  <div style={{fontSize:10,color:waveH>=4?"#ff2200":waveH>=2?"#ffaa00":"#44cc66",marginTop:4}}>
+                    {waveH>=4?"⛔ Dangerous for most vessels":waveH>=2?"⚠️ Rough — experienced crew only":"✓ Manageable conditions"}
+                  </div>
+                </div>
+                <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(74,159,212,0.15)"}}>
+                  <div style={{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}>〰️ SWELL</div>
+                  <div style={{fontSize:22,color:"#88ddff",fontWeight:"bold"}}>{swellH.toFixed(1)}<span style={{fontSize:11,marginLeft:2}}>m</span></div>
+                  <div style={{fontSize:10,color:"#666",marginTop:2}}>Period: {swellPeriod.toFixed(0)}s</div>
+                  <div style={{fontSize:10,color:swellPeriod>=12?"#44cc66":swellPeriod>=8?"#ffcc00":"#ff8800",marginTop:4}}>
+                    {swellPeriod>=12?"Long swell — comfortable":swellPeriod>=8?"Medium swell — noticeable":"Short steep swell — uncomfortable"}
+                  </div>
+                </div>
+                <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(74,159,212,0.15)"}}>
+                  <div style={{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}>🌡️ SEA TEMPERATURE</div>
+                  <div style={{fontSize:22,color:"#4a9fd4",fontWeight:"bold"}}>{seaTemp!=null?cvtT(seaTemp):"—"}<span style={{fontSize:11,marginLeft:2}}>{tUnit()}</span></div>
+                  <div style={{fontSize:10,color:"#666",marginTop:2}}>Surface water temp</div>
+                  <div style={{fontSize:10,color:seaTemp!=null&&seaTemp<10?"#88ccff":seaTemp!=null&&seaTemp<15?"#ffcc00":"#44cc66",marginTop:4}}>
+                    {seaTemp!=null?(seaTemp<10?"❄️ Cold shock risk — drysuit recommended":seaTemp<15?"⚠️ Cold — wetsuit essential":"✓ Tolerable water temp"):"No marine data"}
+                  </div>
+                </div>
+                <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(74,159,212,0.15)"}}>
+                  <div style={{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}>👁️ VISIBILITY</div>
+                  <div style={{fontSize:22,color:fogRisk?"#ffcc00":"#44cc66",fontWeight:"bold"}}>{fogRisk?"POOR":"GOOD"}</div>
+                  <div style={{fontSize:10,color:"#666",marginTop:2}}>Humidity: {day.humidity}%</div>
+                  <div style={{fontSize:10,color:fogRisk?"#ffcc00":"#44cc66",marginTop:4}}>
+                    {fogRisk?"⚠️ Fog risk — sound signals, radar watch, reduce speed":"✓ Good visibility expected"}
+                  </div>
+                </div>
+              </div>
+              {/* Current estimate */}
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                <div style={{fontSize:10,color:"#555",marginBottom:6,letterSpacing:1}}>🌀 CURRENT & DRIFT ESTIMATE</div>
+                <div style={{fontSize:11,color:"#9a8c7a",lineHeight:1.7}}>
+                  Estimated wind-driven surface current: <span style={{color:"#88ddff"}}>{(windKt*0.03).toFixed(1)}kt</span> downwind<br/>
+                  Estimated tidal drift: <span style={{color:"#88ddff"}}>0.5–2kt</span> (varies by location — check local tidal atlas)<br/>
+                  <span style={{color:"#555",fontSize:10}}>For precise current data, consult Admiralty tidal stream atlas for your area.</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tides & Currents Tab ── */}
+      {iTab==="tides"&&(
+        <div>
+          <div style={{fontSize:11,color:"#555",marginBottom:12}}>Astronomical tide prediction for {day.date} · {locationName}</div>
+          <div style={{fontSize:10,color:"#666",marginBottom:12,padding:"6px 10px",background:"rgba(255,200,0,0.06)",border:"1px solid rgba(255,200,0,0.15)",borderRadius:8}}>
+            ⚠️ Approximate tidal predictions only. Always verify with Admiralty Tide Tables or local harbour authority.
+          </div>
+          {/* Tide table */}
+          <div style={{marginBottom:16}}>
+            {tides.map(function(t,i){
+              return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.06)",marginBottom:6,background:"rgba(255,255,255,0.02)"}}>
+                <div style={{fontSize:24}}>{t.type==="High"?"🔼":"🔽"}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,color:t.type==="High"?"#88ddff":"#4a9fd4",fontWeight:"bold"}}>{t.type} Water</div>
+                  <div style={{fontSize:11,color:"#666",marginTop:1}}>{fmtHour(t.hour)}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:18,color:"#e8dcc8",fontWeight:"bold"}}>{t.height.toFixed(1)}<span style={{fontSize:11,color:"#555",marginLeft:2}}>m</span></div>
+                  <div style={{fontSize:10,color:t.type==="High"?"#44cc66":"#88aaff"}}>{t.type==="High"?"Spring/neap varies":"Low water"}</div>
+                </div>
+              </div>;
+            })}
+          </div>
+          {/* Tide bar chart */}
+          <div style={{fontSize:10,color:"#555",marginBottom:8,letterSpacing:1,textTransform:"uppercase"}}>Tidal curve today</div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:2,height:60,marginBottom:16}}>
+            {Array.from({length:24},function(_,h){
+              var M2=Math.cos(2*Math.PI*(h-(lon/360)*24)/12.4206);
+              var S2=Math.cos(2*Math.PI*(h-(lon/360)*24)/12.0)*0.3;
+              var ht=(M2+S2+1)/2;
+              return <div key={h} style={{flex:1,background:"rgba(74,159,212,"+(0.2+ht*0.6)+")",borderRadius:"2px 2px 0 0",height:Math.round(ht*58+2)+"px",minHeight:2}}/>;
+            })}
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#444"}}>
+            <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Passage Planner Tab ── */}
+      {iTab==="passage"&&(
+        <div>
+          <div style={{fontSize:11,color:"#555",marginBottom:12}}>Hourly sailing window — {vesselObj.icon} {vesselObj.label} · {sailTypeObj.icon} {sailTypeObj.label} · {day.date}</div>
+          {hourlyWindows.length===0&&<div style={{textAlign:"center",padding:"24px",color:"#555",fontSize:12}}>Loading marine hourly data…</div>}
+          {hourlyWindows.map(function(hw,i){
+            var tideH=(function(){var M2=Math.cos(2*Math.PI*(hw.hour-(lon/360)*24)/12.4206);var S2=Math.cos(2*Math.PI*(hw.hour-(lon/360)*24)/12.0)*0.3;return((M2+S2+1)/2).toFixed(1);})();
+            return <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,0.05)",marginBottom:4,background:"rgba(255,255,255,0.02)"}}>
+              <div style={{width:3,height:32,borderRadius:2,background:hw.color,flexShrink:0}}/>
+              <div style={{width:40,color:"#888",fontSize:11}}>{fmtHour(hw.hour)}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,color:"#e8dcc8"}}>Bf {hw.bf} {hw.label} · {hw.wind}kt</div>
+                <div style={{fontSize:10,color:"#555",marginTop:1}}>Waves {hw.waveH.toFixed(1)}m · Tide {tideH}m</div>
+              </div>
+              <GoNoBadge status={hw.status} color={hw.color}/>
+            </div>;
+          })}
+          {hourlyWindows.length===0&&(
+            // Fallback using forecast day data when no hourly marine data
+            [{hour:6},{hour:8},{hour:10},{hour:12},{hour:14},{hour:16},{hour:18},{hour:20}].map(function(hw,i){
+              var tideH=(function(){var M2=Math.cos(2*Math.PI*(hw.hour-(lon/360)*24)/12.4206);var S2=Math.cos(2*Math.PI*(hw.hour-(lon/360)*24)/12.0)*0.3;return((M2+S2+1)/2).toFixed(1);})();
+              var hbf=beaufortFromKnots(windKt);
+              var hAssess=marineGoNo(vesselObj,hbf,waveH,iSailType);
+              return <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,0.05)",marginBottom:4,background:"rgba(255,255,255,0.02)"}}>
+                <div style={{width:3,height:32,borderRadius:2,background:hAssess.color,flexShrink:0}}/>
+                <div style={{width:40,color:"#888",fontSize:11}}>{fmtHour(hw.hour)}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,color:"#e8dcc8"}}>Bf {hbf.n} {hbf.label} · {windKt}kt</div>
+                  <div style={{fontSize:10,color:"#555",marginTop:1}}>Waves ~{waveH.toFixed(1)}m · Tide {tideH}m</div>
+                </div>
+                <GoNoBadge status={hAssess.status} color={hAssess.color}/>
+              </div>;
+            })
+          )}
+          <div style={{marginTop:8,fontSize:10,color:"#444",lineHeight:1.6,padding:"8px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8}}>
+            ⚠️ Passage planning data is advisory. Always file a float plan, check official forecasts, carry flares and lifejackets, and inform a shore contact.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App(){
   var fd=useState([]);var iFd=fd[0];var setFd=fd[1];
@@ -2627,6 +3094,7 @@ function App(){
             {/* Role Dashboards — auto-shown when role is active */}
             {iRoles.includes("meteorology")&&<MeteoDashboard lat={iLat} lon={iLon} locationName={iLn} forecastData={iFd} u={u}/>}
             {iRoles.includes("construction")&&<ConstructionDashboard lat={iLat} lon={iLon} locationName={iLn} forecastData={iFd} u={u}/>}
+            {iRoles.includes("sailing")&&<SailingDashboard lat={iLat} lon={iLon} locationName={iLn} forecastData={iFd} u={u}/>}
             {iAp==="overview"&&<WeatherOverview forecastData={iFd} locationName={iLn} u={u} hourlyRaw={iHr} lat={iLat} lon={iLon}/>}
             {iAp==="ten"&&<TenDayForecast forecastData={iFd} u={u}/>}
             {iAp==="hourly"&&<HourlyForecast forecastData={iFd} hourlyRaw={iHr} u={u}/>}
