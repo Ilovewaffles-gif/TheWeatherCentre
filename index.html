@@ -1710,6 +1710,371 @@ function ShareCardModal(props){
   );
 }
 
+
+// ── Meteorology Helpers ───────────────────────────────────────────────────────
+function wetBulb(T, Td, P){
+  // Stull (2011) approximation - accurate to 0.3°C
+  var rh = 100 * Math.exp((17.625*Td/(243.04+Td)) - (17.625*T/(243.04+T)));
+  return T * Math.atan(0.151977 * Math.pow(rh+8.313659, 0.5))
+    + Math.atan(T+rh) - Math.atan(rh-1.676331)
+    + 0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101*rh) - 4.686035;
+}
+
+function liftedIndex(T500, Td850, T850){
+  // Parcel lifted from 850hPa to 500hPa
+  var Tparcel = T850 - 9.8 * ((850-500)/100); // dry adiabatic lapse
+  return T500 - Tparcel;
+}
+
+function capeColour(v){ return v>=2500?"#ff1500":v>=1000?"#ff6600":v>=500?"#ffaa00":v>=250?"#ffcc00":v>0?"#aacc44":"#4a9fd4"; }
+function cinColour(v){ var a=Math.abs(v); return a>=200?"#ff1500":a>=100?"#ff6600":a>=50?"#ffaa00":a>0?"#aacc44":"#4a9fd4"; }
+function liColour(v){ return v<=-8?"#ff1500":v<=-6?"#ff4400":v<=-4?"#ff8800":v<=-2?"#ffcc00":v<=0?"#aacc44":"#4a9fd4"; }
+function hColour(v){ return v>=450?"#ff1500":v>=300?"#ff6600":v>=150?"#ffaa00":v>0?"#ffdd88":"#4a9fd4"; }
+
+function MeteoGauge(props){
+  var label=props.label, value=props.value, unit=props.unit, color=props.color, desc=props.desc, sub=props.sub;
+  return (
+    <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 12px",borderLeft:"3px solid "+color}}>
+      <div style={{fontSize:10,color:"#666",letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>{label}</div>
+      <div style={{fontSize:22,fontWeight:"bold",color:color,marginBottom:2}}>{value}<span style={{fontSize:12,color:"#888",marginLeft:3}}>{unit}</span></div>
+      {sub&&<div style={{fontSize:11,color:color,marginBottom:2}}>{sub}</div>}
+      {desc&&<div style={{fontSize:10,color:"#666",lineHeight:1.5}}>{desc}</div>}
+    </div>
+  );
+}
+
+// ── Skew-T Canvas ─────────────────────────────────────────────────────────────
+function SkewTChart(props){
+  var levels=props.levels; // [{p, T, Td, windSpd, windDir}]
+  var canvasRef=useRef(null);
+  var PRES=[1000,925,850,700,600,500,400,300,250,200,150,100];
+  var W=340, H=380, ML=50, MT=20, MR=20, MB=30;
+  var CW=W-ML-MR, CH=H-MT-MB;
+  var SKEW=0.5; // skew factor deg/hPa
+
+  function pToY(p){ return MT + CH*(1 - (Math.log(p)-Math.log(100))/(Math.log(1050)-Math.log(100))); }
+  function tToX(T,p){ return ML + CW*((T+50)/130) + SKEW*(1000-p)/1000*CW*0.7; }
+
+  useEffect(function(){
+    var c=canvasRef.current;
+    if(!c||!levels||levels.length<2)return;
+    var ctx=c.getContext("2d");
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle="#080d18";
+    ctx.fillRect(0,0,W,H);
+
+    // Draw isobars
+    PRES.forEach(function(p){
+      var y=pToY(p);
+      ctx.strokeStyle="rgba(255,255,255,0.08)";
+      ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(ML,y);ctx.lineTo(W-MR,y);ctx.stroke();
+      ctx.fillStyle="#555";ctx.font="9px Georgia";
+      ctx.fillText(p+"hPa",2,y+3);
+    });
+
+    // Draw isotherms (skewed)
+    for(var T=-50;T<=40;T+=10){
+      ctx.strokeStyle=T===0?"rgba(100,180,255,0.3)":"rgba(255,255,255,0.06)";
+      ctx.lineWidth=T===0?1.5:1;
+      ctx.beginPath();
+      ctx.moveTo(tToX(T,1050),pToY(1050));
+      ctx.lineTo(tToX(T,100),pToY(100));
+      ctx.stroke();
+      if(T%20===0){
+        ctx.fillStyle="#444";ctx.font="9px Georgia";
+        ctx.fillText(T+"°",tToX(T,1000)-6,pToY(1000)+16);
+      }
+    }
+
+    // Draw dry adiabats (approximate)
+    for(var Tbase=-40;Tbase<=60;Tbase+=10){
+      ctx.strokeStyle="rgba(255,180,0,0.08)";ctx.lineWidth=1;
+      ctx.beginPath();
+      var first=true;
+      PRES.forEach(function(p){
+        var Tadiab=Tbase-(9.8/1000)*(1000-p);
+        var x=tToX(Tadiab,p),y=pToY(p);
+        if(first){ctx.moveTo(x,y);first=false;}else{ctx.lineTo(x,y);}
+      });
+      ctx.stroke();
+    }
+
+    // Plot dewpoint profile
+    if(levels.some(function(l){return l.Td!=null;})){
+      ctx.strokeStyle="#44aaff";ctx.lineWidth=2.5;ctx.setLineDash([4,3]);
+      ctx.beginPath();var fdp=true;
+      levels.forEach(function(l){
+        if(l.Td==null)return;
+        var x=tToX(l.Td,l.p),y=pToY(l.p);
+        if(fdp){ctx.moveTo(x,y);fdp=false;}else{ctx.lineTo(x,y);}
+      });
+      ctx.stroke();ctx.setLineDash([]);
+    }
+
+    // Plot temperature profile
+    ctx.strokeStyle="#ff6644";ctx.lineWidth=2.5;
+    ctx.beginPath();var ft=true;
+    levels.forEach(function(l){
+      var x=tToX(l.T,l.p),y=pToY(l.p);
+      if(ft){ctx.moveTo(x,y);ft=false;}else{ctx.lineTo(x,y);}
+    });
+    ctx.stroke();
+
+    // Wind barbs (right edge)
+    levels.forEach(function(l){
+      if(l.windSpd==null)return;
+      var y=pToY(l.p);
+      var bx=W-MR-8;
+      var spd=l.windSpd;
+      var dir=l.windDir||0;
+      var rad=(dir-90)*Math.PI/180;
+      ctx.strokeStyle="#aaaaff";ctx.lineWidth=1.5;
+      // Staff
+      ctx.beginPath();ctx.moveTo(bx,y);ctx.lineTo(bx+Math.cos(rad)*14,y+Math.sin(rad)*14);ctx.stroke();
+      // Flags/barbs
+      var full=Math.floor(spd/10);
+      var half=Math.floor((spd%10)/5);
+      for(var i=0;i<Math.min(full,3);i++){
+        var blen=8, bfrac=0.3+i*0.25;
+        ctx.beginPath();
+        ctx.moveTo(bx+Math.cos(rad)*14*bfrac,y+Math.sin(rad)*14*bfrac);
+        ctx.lineTo(bx+Math.cos(rad)*14*bfrac+Math.cos(rad-Math.PI/2)*blen, y+Math.sin(rad)*14*bfrac+Math.sin(rad-Math.PI/2)*blen);
+        ctx.stroke();
+      }
+      if(half){
+        ctx.beginPath();
+        ctx.moveTo(bx+Math.cos(rad)*14*0.7,y+Math.sin(rad)*14*0.7);
+        ctx.lineTo(bx+Math.cos(rad)*14*0.7+Math.cos(rad-Math.PI/2)*4, y+Math.sin(rad)*14*0.7+Math.sin(rad-Math.PI/2)*4);
+        ctx.stroke();
+      }
+    });
+
+    // Legend
+    ctx.fillStyle="#ff6644";ctx.fillRect(ML,H-MB+5,18,2);
+    ctx.fillStyle="#ccc";ctx.font="9px Georgia";ctx.fillText("Temp",ML+22,H-MB+8);
+    ctx.setLineDash([4,3]);ctx.strokeStyle="#44aaff";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(ML+70,H-MB+6);ctx.lineTo(ML+88,H-MB+6);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#ccc";ctx.fillText("Dewpoint",ML+92,H-MB+8);
+
+  },[levels]);
+
+  return <canvas ref={canvasRef} width={W} height={H} style={{borderRadius:10,maxWidth:"100%",display:"block"}}/>;
+}
+
+// ── Vertical Profile Table ────────────────────────────────────────────────────
+function VerticalTable(props){
+  var levels=props.levels;
+  var thSty={fontSize:10,color:"#666",padding:"5px 6px",textAlign:"center",borderBottom:"1px solid rgba(255,255,255,0.07)",letterSpacing:1};
+  var tdSty={fontSize:11,color:"#e8dcc8",padding:"5px 6px",textAlign:"center",borderBottom:"1px solid rgba(255,255,255,0.04)"};
+  return (
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+        <thead>
+          <tr>
+            <th style={thSty}>hPa</th>
+            <th style={thSty}>T (°C)</th>
+            <th style={thSty}>Td (°C)</th>
+            <th style={thSty}>RH%</th>
+            <th style={thSty}>Wind</th>
+            <th style={thSty}>Wb (°C)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {levels.map(function(l,i){
+            var wb=l.T!=null&&l.Td!=null?wetBulb(l.T,l.Td,l.p).toFixed(1):"-";
+            var dirs=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+            var wdir=l.windDir!=null?dirs[Math.round(l.windDir/22.5)%16]+' '+Math.round(l.windSpd)+'kt':"-";
+            var rhCol=l.rh>=80?"#88ccff":l.rh>=60?"#aaddff":l.rh>=40?"#cce8ff":"#9a8c7a";
+            var tCol=l.T>20?"#ff8844":l.T>10?"#ffcc44":l.T>0?"#aaddaa":l.T>-10?"#88bbff":"#cc88ff";
+            return (
+              <tr key={i} style={{background:i%2===0?"rgba(255,255,255,0.02)":"transparent"}}>
+                <td style={Object.assign({},tdSty,{color:"#ff9944",fontWeight:"bold"})}>{l.p}</td>
+                <td style={Object.assign({},tdSty,{color:tCol})}>{l.T!=null?l.T.toFixed(1):"-"}</td>
+                <td style={Object.assign({},tdSty,{color:"#44aaff"})}>{l.Td!=null?l.Td.toFixed(1):"-"}</td>
+                <td style={Object.assign({},tdSty,{color:rhCol})}>{l.rh!=null?Math.round(l.rh):"-"}</td>
+                <td style={Object.assign({},tdSty,{color:"#aaaaff"})}>{wdir}</td>
+                <td style={Object.assign({},tdSty,{color:"#88ddcc"})}>{wb}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Meteorology Dashboard ─────────────────────────────────────────────────────
+function MeteoDashboard(props){
+  var lat=props.lat,lon=props.lon,locationName=props.locationName,forecastData=props.forecastData;
+  var data=useState(null);var iData=data[0];var setData=data[1];
+  var loading=useState(true);var iLoading=loading[0];var setLoading=loading[1];
+  var err=useState("");var iErr=err[0];var setErr=err[1];
+  var tab=useState("indices");var iTab=tab[0];var setTab=tab[1];
+  var radarAnim=useState(true);var iRadarAnim=radarAnim[0];var setRadarAnim=radarAnim[1];
+  var radarKey=useState(0);var iRadarKey=radarKey[0];var setRadarKey=radarKey[1];
+
+  // Pressure levels available from Open-Meteo
+  var LEVELS=[1000,925,850,700,600,500,400,300,250,200];
+
+  useEffect(function(){
+    if(!lat||!lon)return;
+    setLoading(true);setErr("");
+    var levelVars=LEVELS.map(function(p){
+      return ["temperature_"+p+"hPa","dewpoint_"+p+"hPa","relative_humidity_"+p+"hPa",
+              "windspeed_"+p+"hPa","winddirection_"+p+"hPa"].join(",");
+    }).join(",");
+    var url="https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+
+      "&hourly="+levelVars+",cape,convective_inhibition,&daily=cape_max&"+
+      "&current_weather=true&timezone=auto&forecast_days=1";
+    fetch(url)
+      .then(function(r){return r.json();})
+      .then(function(j){
+        // Get current hour index
+        var now=new Date();
+        var hr=now.getHours();
+        var h=j.hourly;
+        // Build pressure level data for current hour
+        var levels=LEVELS.map(function(p){
+          var T=h["temperature_"+p+"hPa"]?h["temperature_"+p+"hPa"][hr]:null;
+          var Td=h["dewpoint_"+p+"hPa"]?h["dewpoint_"+p+"hPa"][hr]:null;
+          var rh=h["relative_humidity_"+p+"hPa"]?h["relative_humidity_"+p+"hPa"][hr]:null;
+          var ws=h["windspeed_"+p+"hPa"]?h["windspeed_"+p+"hPa"][hr]:null;
+          var wd=h["winddirection_"+p+"hPa"]?h["winddirection_"+p+"hPa"][hr]:null;
+          // Convert wind speed from km/h to knots
+          var wsKt=ws!=null?Math.round(ws*0.539957):null;
+          return {p:p,T:T,Td:Td,rh:rh,windSpd:wsKt,windDir:wd};
+        });
+        // CAPE & CIN from hourly
+        var cape=h.cape?h.cape[hr]:null;
+        var cin=h.convective_inhibition?h.convective_inhibition[hr]:null;
+        // Lifted Index from levels
+        var l500=levels.find(function(l){return l.p===500;});
+        var l850=levels.find(function(l){return l.p===850;});
+        var li=null;
+        if(l500&&l850&&l500.T!=null&&l850.T!=null&&l850.Td!=null){
+          li=liftedIndex(l500.T,l850.Td,l850.T);
+        }
+        // Helicity — approximate from 0-1km wind shear (850-1000hPa)
+        var l1000=levels.find(function(l){return l.p===1000;});
+        var srh=null;
+        if(l850&&l1000&&l850.windSpd!=null&&l1000.windSpd!=null){
+          var du=(l850.windSpd-l1000.windSpd)*Math.sin((l850.windDir-l1000.windDir||0)*Math.PI/180);
+          var dv=(l850.windSpd-l1000.windSpd)*Math.cos((l850.windDir-l1000.windDir||0)*Math.PI/180);
+          srh=Math.round(Math.abs(du*dv)*50);
+        }
+        // Wet bulb at surface
+        var wbSfc=l1000&&l1000.T!=null&&l1000.Td!=null?wetBulb(l1000.T,l1000.Td,1000):null;
+        setData({levels:levels,cape:cape,cin:cin,li:li?li.toFixed(1):null,srh:srh,wbSfc:wbSfc?wbSfc.toFixed(1):null});
+        setLoading(false);
+      })
+      .catch(function(e){setErr("Could not load upper-air data.");setLoading(false);});
+  },[lat,lon]);
+
+  var tabs=[{id:"indices",label:"Indices"},{id:"skewtable",label:"Skew-T / Sounding"},{id:"radar",label:"Live Radar"}];
+
+  var sectionSty={background:"rgba(255,255,255,0.02)",border:"1px solid rgba(74,159,212,0.25)",borderRadius:16,padding:"18px 16px",marginBottom:16};
+
+  return (
+    <div style={sectionSty}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <span style={{fontSize:18}}>🌩️</span>
+        <div>
+          <div style={{fontSize:13,color:"#88ccff",letterSpacing:2,textTransform:"uppercase"}}>Meteorology Dashboard</div>
+          <div style={{fontSize:10,color:"#555",marginTop:1}}>Advanced upper-air analysis — {locationName}</div>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:0,borderBottom:"1px solid rgba(255,255,255,0.07)",marginBottom:16,overflowX:"auto"}}>
+        {tabs.map(function(t){var on=iTab===t.id;return <button key={t.id} onClick={function(){setTab(t.id);}} style={{padding:"8px 14px",background:"none",border:"none",borderBottom:on?"2px solid #4a9fd4":"2px solid transparent",color:on?"#88ccff":"#555",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>{t.label}</button>;})}
+      </div>
+
+      {iLoading&&<div style={{textAlign:"center",padding:"32px 0",color:"#555",fontSize:13}}>Loading upper-air data…</div>}
+      {iErr&&<div style={{color:"#ff6666",fontSize:12,textAlign:"center",padding:"16px 0"}}>{iErr}</div>}
+
+      {!iLoading&&!iErr&&iData&&iTab==="indices"&&(
+        <div>
+          <div style={{fontSize:11,color:"#555",marginBottom:12}}>Current upper-air indices — updated hourly</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+            <MeteoGauge label="CAPE" value={iData.cape!=null?Math.round(iData.cape):"—"} unit="J/kg"
+              color={iData.cape!=null?capeColour(iData.cape):"#555"}
+              sub={iData.cape!=null?(iData.cape>=2500?"Extreme":iData.cape>=1000?"High":iData.cape>=500?"Moderate":iData.cape>=250?"Low":"Weak"):"No data"}
+              desc="Convective Available Potential Energy. ≥1000 = severe storms possible."/>
+            <MeteoGauge label="CIN" value={iData.cin!=null?Math.round(iData.cin):"—"} unit="J/kg"
+              color={iData.cin!=null?cinColour(iData.cin):"#555"}
+              sub={iData.cin!=null?(Math.abs(iData.cin)>=200?"Strong cap":Math.abs(iData.cin)>=50?"Moderate cap":"Weak cap"):"No data"}
+              desc="Convective Inhibition. Strong negative values suppress storms."/>
+            <MeteoGauge label="Lifted Index" value={iData.li!=null?iData.li:"—"} unit=""
+              color={iData.li!=null?liColour(parseFloat(iData.li)):"#555"}
+              sub={iData.li!=null?(parseFloat(iData.li)<=-6?"Extremely unstable":parseFloat(iData.li)<=-4?"Very unstable":parseFloat(iData.li)<=-2?"Unstable":parseFloat(iData.li)<=0?"Slightly unstable":"Stable"):"No data"}
+              desc="Parcel temp minus env temp at 500hPa. Negative = unstable."/>
+            <MeteoGauge label="Storm-Rel Helicity" value={iData.srh!=null?iData.srh:"—"} unit="m²/s²"
+              color={iData.srh!=null?hColour(iData.srh):"#555"}
+              sub={iData.srh!=null?(iData.srh>=450?"Extreme tornado risk":iData.srh>=300?"High tornado risk":iData.srh>=150?"Moderate risk":"Low risk"):"No data"}
+              desc="0-1km SRH. ≥150 = supercells possible, ≥300 = tornado risk."/>
+            <MeteoGauge label="Wet Bulb (Sfc)" value={iData.wbSfc!=null?iData.wbSfc:"—"} unit="°C"
+              color={iData.wbSfc!=null?(parseFloat(iData.wbSfc)>=28?"#ff4400":parseFloat(iData.wbSfc)>=24?"#ff8800":parseFloat(iData.wbSfc)<0?"#88ccff":"#4adf88"):"#555"}
+              sub={iData.wbSfc!=null?(parseFloat(iData.wbSfc)>=28?"Dangerous heat stress":parseFloat(iData.wbSfc)<0?"Below freezing":"Normal range"):"No data"}
+              desc="Wet-bulb temperature at surface. Affects human heat stress and icing."/>
+            <MeteoGauge label="850hPa Temp" value={iData.levels.find(function(l){return l.p===850;})?iData.levels.find(function(l){return l.p===850;}).T!=null?iData.levels.find(function(l){return l.p===850;}).T.toFixed(1):"—":"—"} unit="°C"
+              color={(function(){var l=iData.levels.find(function(x){return x.p===850;});if(!l||l.T==null)return"#555";return l.T>10?"#ff8844":l.T>0?"#ffcc44":l.T>-10?"#88bbff":"#cc88ff";})()}
+              sub="~1500m altitude"
+              desc="850hPa temperature. Key level for thunderstorm forecasting and warm-air advection."/>
+          </div>
+          {/* 500hPa & 300hPa quick read */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            {[850,700,500,400,300].map(function(p){
+              var l=iData.levels.find(function(x){return x.p===p;});
+              if(!l)return null;
+              var dirs=["N","NE","NE","E","SE","SE","S","SW","SW","W","NW","NW"];
+              var wdir=l.windDir!=null?dirs[Math.floor(l.windDir/30)%12]:"";
+              return <div key={p} style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"8px 10px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                <div style={{fontSize:10,color:"#555",marginBottom:3}}>{p}hPa</div>
+                <div style={{fontSize:13,color:"#e8dcc8"}}>{l.T!=null?l.T.toFixed(1)+"°C":"—"}</div>
+                <div style={{fontSize:10,color:"#88aaff",marginTop:2}}>{l.windSpd!=null?wdir+" "+l.windSpd+"kt":"—"}</div>
+                <div style={{fontSize:10,color:"#44aaff",marginTop:1}}>RH: {l.rh!=null?Math.round(l.rh)+"%":"—"}</div>
+              </div>;
+            })}
+          </div>
+        </div>
+      )}
+
+      {!iLoading&&!iErr&&iData&&iTab==="skewtable"&&(
+        <div>
+          <div style={{fontSize:11,color:"#555",marginBottom:10}}>Skew-T Log-P diagram · Red=Temperature · Blue dashed=Dewpoint · Wind barbs right</div>
+          <div style={{overflowX:"auto",marginBottom:16}}>
+            <SkewTChart levels={iData.levels}/>
+          </div>
+          <div style={{fontSize:11,color:"#666",marginBottom:8,letterSpacing:1,textTransform:"uppercase"}}>Vertical Sounding Table</div>
+          <VerticalTable levels={iData.levels}/>
+        </div>
+      )}
+
+      {iTab==="radar"&&(
+        <div>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
+            <div style={{fontSize:11,color:"#555"}}>Live precipitation radar — RainViewer</div>
+            <button onClick={function(){setRadarAnim(!iRadarAnim);setRadarKey(function(k){return k+1;});}}
+              style={{padding:"4px 12px",borderRadius:8,border:"1px solid rgba(74,159,212,0.3)",background:"rgba(74,159,212,0.08)",color:"#88ccff",fontSize:11,cursor:"pointer"}}>
+              {iRadarAnim?"⏸ Pause":"▶ Animate"}
+            </button>
+          </div>
+          <div style={{borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,0.08)",position:"relative",paddingBottom:"60%",height:0}}>
+            <iframe
+              key={iRadarKey}
+              src={"https://www.rainviewer.com/map.html?loc="+lat+","+lon+",8&oFa=0&oC=0&oU=0&oCS=1&oF=0&oAP=1&rmt=3&ext=1&sm=1&sn=1&animationSpeed="+(iRadarAnim?"5":"0")}
+              style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}
+              allowFullScreen
+              title="RainViewer Radar"
+            />
+          </div>
+          <div style={{fontSize:10,color:"#444",marginTop:6,textAlign:"center"}}>Powered by RainViewer — updates every 10 minutes</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function App(){
   var fd=useState([]);var iFd=fd[0];var setFd=fd[1];
@@ -1951,6 +2316,8 @@ function App(){
                 {[{col:"#ff7700",label:"Confirmed",solid:true},{col:"#4a9fd4",label:"Near-term",solid:false},{col:"#555",label:"Estimated",solid:false}].map(function(l,i){return <span key={i} style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:9,height:9,borderRadius:l.solid?2:"50%",background:l.col,display:"inline-block"}}/>{l.label}</span>;})}
               </div>
             </div>
+            {/* Meteorology Dashboard — auto-shown when role is active */}
+            {iRoles.includes("meteorology")&&<MeteoDashboard lat={iLat} lon={iLon} locationName={iLn} forecastData={iFd} u={u}/>}
             {iAp==="overview"&&<WeatherOverview forecastData={iFd} locationName={iLn} u={u} hourlyRaw={iHr} lat={iLat} lon={iLon}/>}
             {iAp==="ten"&&<TenDayForecast forecastData={iFd} u={u}/>}
             {iAp==="hourly"&&<HourlyForecast forecastData={iFd} hourlyRaw={iHr} u={u}/>}
