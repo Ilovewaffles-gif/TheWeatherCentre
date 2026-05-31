@@ -18,7 +18,7 @@
   <!-- html2canvas for share card -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script>
-    firebase.initializeApp({
+firebase.initializeApp({
       apiKey: "AIzaSyBw7uo-9Fhd2WmRyjm3Rh_qEAPnDOjjdGI",
       authDomain: "the-global-weather-centr-34242.firebaseapp.com",
       projectId: "the-global-weather-centr-34242",
@@ -193,8 +193,7 @@ function getDayPeriods(d){
   return {
     morning:{time:"06:00-12:00",temp:Math.round(d.low+(d.temp-d.low)*0.4),condition:d.condition,rain:isRainy?Math.round(d.rain*0.6):Math.max(0,d.rain-10),rainMm:parseFloat((d.rainMm*0.4).toFixed(1)),windMph:Math.round(d.windMph*0.9),note:isRainy?"Possible showers":"Generally dry"},
     afternoon:{time:"12:00-18:00",temp:d.temp,condition:d.condition,rain:d.rain,rainMm:d.rainMm,windMph:d.windMph,note:d.note},
-    evening:{time:"18:00-00:00",temp:Math.round(d.temp*0.75+d.low*0.25),condition:d.condition,rain:isRainy?Math.round(d.rain*0.7):Math.max(0,d.rain-15),rainMm:parseFloat((d.rainMm*0.5).toFixed(1)),windMph:Math.round(d.windMph*1.1),note:"Cooling down"},
-  };
+    evening:{time:"18:00-00:00",temp:Math.round(d.temp*0.75+d.low*0.25),condition:d.condition,rain:isRainy?Math.round(d.rain*0.7):Math.max(0,d.rain-15),rainMm:parseFloat((d.rainMm*0.5).toFixed(1)),windMph:Math.round(d.windMph*1.1),note:"Cooling down"}};
 }
 
 // ── Hourly builder ───────────────────────────────────────────────────────────
@@ -606,7 +605,8 @@ function drillingWindow(soilT, d){
 }
 
 </script>
-<script>
+<script>var _jsxFileName="";
+
 function MeteoGauge(props){
   var label=props.label, value=props.value, unit=props.unit, color=props.color, desc=props.desc, sub=props.sub;
   return (
@@ -654,7 +654,7 @@ var active=NAV_ITEMS.find(function(n){return n.id===activePage;})||NAV_ITEMS[0];
 return (
 React.createElement('div', { ref: ref, style: {position:"relative",flexShrink:0}}
 , React.createElement('button', { onClick: function(){setOpen(function(o){return !o;});}, style: {display:"flex",alignItems:"center",gap:6,padding:"10px 12px",borderRadius:12,cursor:"pointer",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.18)",color:"#e8dcc8",fontSize:13,whiteSpace:"nowrap"}}
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 49}}, active.icon)
+, React.createElement('span', {}, active.icon)
 , React.createElement('span', { style: {maxWidth:110,overflow:"hidden",textOverflow:"ellipsis"}}, active.label)
 , React.createElement('span', { style: {fontSize:10,color:"#888"}}, isOpen?"▲":"▼")
 )
@@ -665,7 +665,7 @@ var isAct=item.id===activePage;
 return (
 React.createElement('button', { key: item.id, onClick: function(){setActivePage(item.id);setOpen(false);}, style: {display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 14px",background:isAct?"rgba(255,119,0,0.15)":"transparent",border:"none",borderBottom:"1px solid rgba(255,255,255,0.04)",color:isAct?"#ffaa44":"#bbb",fontSize:13,cursor:"pointer",textAlign:"left",outline:isAct?"1px solid rgba(255,119,0,0.4)":"none"}}
 , React.createElement('span', { style: {fontSize:16}}, item.icon)
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 60}}, item.label)
+, React.createElement('span', {}, item.label)
 , isAct&&React.createElement('span', { style: {marginLeft:"auto",color:"#ff7700",fontSize:10}}, "●")
 )
 );
@@ -687,7 +687,7 @@ var periods=getDayPeriods(d);
 return (
 React.createElement('div', { onClick: function(){setSel(sel===i?null:i);}, style: {background:isSel?bgc(d.temp):"rgba(255,255,255,0.03)",border:"1px solid "+(isC?color+"66":isN?color+"44":"rgba(255,255,255,0.08)"),borderRadius:12,padding:"13px 11px 11px",cursor:"pointer",transition:"all 0.2s",transform:isSel?"scale(1.03)":"scale(1)",boxShadow:isSel?"0 6px 24px "+color+"28":"none"}}
 , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7}}
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 82}}
+, React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#bbb",letterSpacing:1,textTransform:"uppercase",fontWeight:"bold"}}, d.date.split(" ").slice(0,2).join(" "))
 , React.createElement('div', { style: {fontSize:10,color:"#666",marginTop:1}}, d.date.split(" ").slice(2).join(" "))
 )
@@ -723,10 +723,10 @@ React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",marginTop:6,bor
 )
 , detailView==="daily"&&(
 React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:3}}
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 118}}, "Pressure: " , React.createElement('b', { style: {color:pc(d.pressure)}}, fmtPres(d.pressure,u.pressure)))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 119}}, "Rain: " , React.createElement('b', { style: {color:rc(d.rain)}}, d.rain, "%"), " / "  , React.createElement('b', { style: {color:rc(d.rain)}}, fmtRain(d.rainMm,u.rain)), d.rainHours>0&&React.createElement('span', { style: {color:"#666",fontSize:10}}, " " , d.rainHours, "h"))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 120}}, "Humidity: " , React.createElement('b', { style: {color:hc(d.humidity)}}, d.humidity, "%"))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 121}}, "Wind: " , React.createElement('b', { style: {color:wc(d.windMph)}}, fmtSpd(d.windMph,u.speed)), React.createElement('span', { style: {color:"#666",fontSize:10}}, " " , cat))
+, React.createElement('span', {}, "Pressure: " , React.createElement('b', { style: {color:pc(d.pressure)}}, fmtPres(d.pressure,u.pressure)))
+, React.createElement('span', {}, "Rain: " , React.createElement('b', { style: {color:rc(d.rain)}}, d.rain, "%"), " / "  , React.createElement('b', { style: {color:rc(d.rain)}}, fmtRain(d.rainMm,u.rain)), d.rainHours>0&&React.createElement('span', { style: {color:"#666",fontSize:10}}, " " , d.rainHours, "h"))
+, React.createElement('span', {}, "Humidity: " , React.createElement('b', { style: {color:hc(d.humidity)}}, d.humidity, "%"))
+, React.createElement('span', {}, "Wind: " , React.createElement('b', { style: {color:wc(d.windMph)}}, fmtSpd(d.windMph,u.speed)), React.createElement('span', { style: {color:"#666",fontSize:10}}, " " , cat))
 , React.createElement('span', { style: {fontSize:10}}, "Gusts: " , React.createElement('b', { style: {color:wc(d.gustMph)}}, fmtSpd(d.gustMph,u.speed)))
 )
 )
@@ -798,14 +798,14 @@ var d=forecastData[sel],bx=(sel/(n-1))*100,fl=bx>62;
 return React.createElement('div', { style: {position:"absolute",bottom:"calc(100% - 143px)",left:fl?"auto":"calc("+bx+"% + 4px)",right:fl?"calc("+(100-bx)+"% + 4px)":"auto",background:"rgba(12,16,30,0.97)",border:"1px solid "+tc(d.temp)+"55",borderRadius:10,padding:"11px 13px",minWidth:190,zIndex:10,boxShadow:"0 4px 24px rgba(0,0,0,0.65)",pointerEvents:"none"}}
 , React.createElement('div', { style: {fontSize:13,fontWeight:"bold",color:"#fff",marginBottom:7}}, d.date, " " , d.condition)
 , React.createElement('div', { style: {display:"flex",gap:16,marginBottom:8}}
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 193}}, React.createElement('div', { style: {fontSize:9,color:"#666",textTransform:"uppercase",letterSpacing:1}}, "High"), React.createElement('div', { style: {fontSize:20,fontWeight:"bold",color:tc(d.temp)}}, fmtTemp(d.temp,u.temp)))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 194}}, React.createElement('div', { style: {fontSize:9,color:"#666",textTransform:"uppercase",letterSpacing:1}}, "Low"), React.createElement('div', { style: {fontSize:20,fontWeight:"bold",color:"#7bbf44"}}, fmtTemp(d.low,u.temp)))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#666",textTransform:"uppercase",letterSpacing:1}}, "High"), React.createElement('div', { style: {fontSize:20,fontWeight:"bold",color:tc(d.temp)}}, fmtTemp(d.temp,u.temp)))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#666",textTransform:"uppercase",letterSpacing:1}}, "Low"), React.createElement('div', { style: {fontSize:20,fontWeight:"bold",color:"#7bbf44"}}, fmtTemp(d.low,u.temp)))
 )
 , React.createElement('div', { style: {fontSize:11,color:"#aaa",display:"flex",flexDirection:"column",gap:4,lineHeight:1.4}}
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 197}}, "Pressure: " , React.createElement('b', { style: {color:pc(d.pressure)}}, fmtPres(d.pressure,u.pressure)))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 198}}, "Rain: " , React.createElement('b', { style: {color:rc(d.rain)}}, d.rain, "%"), " / "  , React.createElement('b', { style: {color:rc(d.rain)}}, fmtRain(d.rainMm,u.rain)), d.rainHours>0&&React.createElement('span', { style: {color:"#666",fontSize:10}}, " " , d.rainHours, "h"))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 199}}, "Humidity: " , React.createElement('b', { style: {color:hc(d.humidity)}}, d.humidity, "%"))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 200}}, "Wind: " , React.createElement('b', { style: {color:wc(d.windMph)}}, fmtSpd(d.windMph,u.speed)), " " , React.createElement('span', { style: {color:"#777",fontSize:10}}, windCat(d.windMph)))
+, React.createElement('span', {}, "Pressure: " , React.createElement('b', { style: {color:pc(d.pressure)}}, fmtPres(d.pressure,u.pressure)))
+, React.createElement('span', {}, "Rain: " , React.createElement('b', { style: {color:rc(d.rain)}}, d.rain, "%"), " / "  , React.createElement('b', { style: {color:rc(d.rain)}}, fmtRain(d.rainMm,u.rain)), d.rainHours>0&&React.createElement('span', { style: {color:"#666",fontSize:10}}, " " , d.rainHours, "h"))
+, React.createElement('span', {}, "Humidity: " , React.createElement('b', { style: {color:hc(d.humidity)}}, d.humidity, "%"))
+, React.createElement('span', {}, "Wind: " , React.createElement('b', { style: {color:wc(d.windMph)}}, fmtSpd(d.windMph,u.speed)), " " , React.createElement('span', { style: {color:"#777",fontSize:10}}, windCat(d.windMph)))
 , React.createElement('span', { style: {color:"#888",fontSize:10}}, "Gusts: " , React.createElement('b', { style: {color:wc(d.gustMph)}}, fmtSpd(d.gustMph,u.speed)))
 , React.createElement('span', { style: {color:"#9a8c7a"}}, d.note)
 )
@@ -874,7 +874,7 @@ React.createElement('div', { style: {background:"linear-gradient(135deg,rgba(255
 , React.createElement('div', { style: {fontSize:10,letterSpacing:4,color:"#ff7700",textTransform:"uppercase",marginBottom:12}}, "Current Conditions — "   , locationName)
 , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",marginBottom:14}}
 , React.createElement('span', { style: {fontSize:52,lineHeight:1}}, iCur.condition)
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 269}}
+, React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:44,fontWeight:"bold",color:col,lineHeight:1}}, fmtTemp(iCur.temp,u.temp))
 , React.createElement('div', { style: {fontSize:13,color:"#888",marginTop:2}}, condLabel)
 , React.createElement('div', { style: {fontSize:12,color:"#999",marginTop:1}}, "Feels like "  , React.createElement('span', { style: {color:tc(iCur.feelsLike)}}, fmtTemp(iCur.feelsLike,u.temp)))
@@ -922,7 +922,7 @@ var isLondon=locationName.includes("London");
 var tabs=[{id:"temp",label:"Temp"},{id:"rain",label:"Rain %"},{id:"rainmm",label:"Rainfall"},{id:"humidity",label:"Humidity"},{id:"wind",label:"Wind"},{id:"pressure",label:"Pressure"}];
 var panel={background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.10)",borderRadius:16,padding:"20px 16px 14px",marginBottom:26};
 return (
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 317}}
+React.createElement('div', {}
 , React.createElement(CurrentWeather, { forecastData: forecastData, hourlyRaw: hourlyRaw, locationName: locationName, u: u, lat: lat, lon: lon})
 , React.createElement('div', { style: panel}
 , React.createElement('div', { style: {display:"flex",gap:5,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}
@@ -931,9 +931,9 @@ React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lin
 )
 , React.createElement(BarChart, { forecastData: forecastData, graph: iGraph, u: u, sel: iSel, setSel: setSel, isLondon: isLondon})
 , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",marginTop:8,fontSize:10,color:"#666"}}
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 326}}, forecastData[0]?forecastData[0].date:"")
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 327}}, forecastData[Math.floor(forecastData.length/2)]?forecastData[Math.floor(forecastData.length/2)].date:"")
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 328}}, forecastData[forecastData.length-1]?forecastData[forecastData.length-1].date:"")
+, React.createElement('span', {}, forecastData[0]?forecastData[0].date:"")
+, React.createElement('span', {}, forecastData[Math.floor(forecastData.length/2)]?forecastData[Math.floor(forecastData.length/2)].date:"")
+, React.createElement('span', {}, forecastData[forecastData.length-1]?forecastData[forecastData.length-1].date:"")
 )
 , iGraph==="temp"&&React.createElement('div', { style: {display:"flex",justifyContent:"flex-end",gap:10,marginTop:4,fontSize:10}}, [15,20,25,30,35,38].map(function(t){return React.createElement('span', { key: t, style: {color:tc(t)}}, fmtTemp(t,u.temp));}))
 , iGraph==="pressure"&&React.createElement('div', { style: {display:"flex",gap:10,marginTop:5,fontSize:9,color:"#777",flexWrap:"wrap"}}, React.createElement('span', { style: {color:"#ff6600"}}, fmtPres(1035,u.pressure), " High" ), React.createElement('span', { style: {color:"#88ddff"}}, fmtPres(1015,u.pressure), " Normal" ), React.createElement('span', { style: {color:"#9955cc"}}, fmtPres(1000,u.pressure), " Low" ))
@@ -952,7 +952,7 @@ React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lin
 {icon:"💨",title:"Wind Forecasts",text:"Wind speeds are 10m surface winds. Gusts can be significantly higher. Strong Breeze (20-30 mph) can affect outdoor activities."},
 {icon:"🌍",title:"Data Source",text:"Forecasts are powered by Open-Meteo, a free and open weather API using ECMWF and other model data updated hourly."},
 {icon:"⚡",title:"Storm Risk",text:"Storm risk is flagged when temperature exceeds 28°C and humidity exceeds 50%, creating convective instability conditions."},
-].map(function(r,i){return React.createElement('div', { key: i, style: {display:"flex",gap:12}}, React.createElement('span', { style: {fontSize:22,flexShrink:0}}, r.icon), React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 347}}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8",fontWeight:"bold",marginBottom:4}}, r.title), React.createElement('div', { style: {fontSize:12,color:"#7a6e5e",lineHeight:1.55}}, r.text)));})
+].map(function(r,i){return React.createElement('div', { key: i, style: {display:"flex",gap:12}}, React.createElement('span', { style: {fontSize:22,flexShrink:0}}, r.icon), React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8",fontWeight:"bold",marginBottom:4}}, r.title), React.createElement('div', { style: {fontSize:12,color:"#7a6e5e",lineHeight:1.55}}, r.text)));})
 )
 )
 )
@@ -964,7 +964,7 @@ var sel=useState(null);var iSel=sel[0];var setSel=sel[1];
 var dv=useState("daily");var iDv=dv[0];var setDv=dv[1];
 var data=forecastData.slice(0,10);
 return (
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 359}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:3,color:"#ff7700",textTransform:"uppercase",marginBottom:16}}, "14-Day Forecast" )
 , React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:8}}
 , data.map(function(d,i){
@@ -997,13 +997,13 @@ React.createElement('div', { style: {marginTop:12,borderTop:"1px solid rgba(255,
 , React.createElement('button', { onClick: function(e){e.stopPropagation();setDv("periods");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:iDv==="periods"?"#ff7700":"rgba(255,255,255,0.07)",color:iDv==="periods"?"#fff":"#aaa",border:"none",cursor:"pointer"}}, "Morning / Afternoon / Evening"    )
 )
 , iDv==="daily"&&React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px 14px",fontSize:11,color:"#aaa"}}
-, sunny&&React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 392}}, "In sun: "  , React.createElement('b', { style: {color:tc(sun)}}, fmtTemp(sun,u.temp)))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 393}}, "In shade: "  , React.createElement('b', { style: {color:tc(shade)}}, fmtTemp(shade,u.temp)))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 394}}, "Pressure: " , React.createElement('b', { style: {color:pc(d.pressure)}}, fmtPres(d.pressure,u.pressure)))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 395}}, "Humidity: " , React.createElement('b', { style: {color:hc(d.humidity)}}, d.humidity, "%"))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 396}}, "Rain: " , React.createElement('b', { style: {color:rc(d.rain)}}, d.rain, "%"))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 397}}, "Rainfall: " , React.createElement('b', { style: {color:rc(d.rain)}}, fmtRain(d.rainMm,u.rain)))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 398}}, "Wind: " , React.createElement('b', { style: {color:wc(d.windMph)}}, fmtSpd(d.windMph,u.speed)))
+, sunny&&React.createElement('span', {}, "In sun: "  , React.createElement('b', { style: {color:tc(sun)}}, fmtTemp(sun,u.temp)))
+, React.createElement('span', {}, "In shade: "  , React.createElement('b', { style: {color:tc(shade)}}, fmtTemp(shade,u.temp)))
+, React.createElement('span', {}, "Pressure: " , React.createElement('b', { style: {color:pc(d.pressure)}}, fmtPres(d.pressure,u.pressure)))
+, React.createElement('span', {}, "Humidity: " , React.createElement('b', { style: {color:hc(d.humidity)}}, d.humidity, "%"))
+, React.createElement('span', {}, "Rain: " , React.createElement('b', { style: {color:rc(d.rain)}}, d.rain, "%"))
+, React.createElement('span', {}, "Rainfall: " , React.createElement('b', { style: {color:rc(d.rain)}}, fmtRain(d.rainMm,u.rain)))
+, React.createElement('span', {}, "Wind: " , React.createElement('b', { style: {color:wc(d.windMph)}}, fmtSpd(d.windMph,u.speed)))
 , React.createElement('span', { style: {fontSize:10}}, "Gusts: " , React.createElement('b', { style: {color:wc(d.gustMph)}}, fmtSpd(d.gustMph,u.speed)))
 )
 , iDv==="periods"&&React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:8}}, ["morning","afternoon","evening"].map(function(pk){var p=periods[pk];return React.createElement('div', { key: pk, style: {background:"rgba(0,0,0,0.22)",padding:"8px 10px",borderRadius:8,borderLeft:"3px solid "+tc(p.temp)}}, React.createElement('div', { style: {fontSize:11,color:"#ddd",marginBottom:3}}, p.time, " " , p.condition), React.createElement('div', { style: {display:"flex",justifyContent:"space-between",fontSize:12}}, React.createElement('b', { style: {color:tc(p.temp)}}, fmtTemp(p.temp,u.temp)), React.createElement('span', { style: {color:rc(p.rain)}}, p.rain, "% " , fmtRain(p.rainMm,u.rain))), React.createElement('div', { style: {fontSize:10,color:wc(p.windMph),marginTop:2}}, fmtSpd(p.windMph,u.speed)));}))
@@ -1027,10 +1027,10 @@ var hours=buildHourly(forecastData,hourlyRaw,iSd);
 var maxH=hours.length>0?Math.max.apply(null,hours.map(function(h){return h.temp;})):30;
 var minH=hours.length>0?Math.min.apply(null,hours.map(function(h){return h.temp;})):10;
 return (
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 422}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:3,color:"#ff7700",textTransform:"uppercase",marginBottom:16}}, "Hourly Forecast" )
 , React.createElement('div', { style: {display:"flex",gap:6,marginBottom:18,flexWrap:"wrap"}}
-, forecastData.slice(0,7).map(function(d,i){var on=iSd===i;return React.createElement('button', { key: i, onClick: function(){setSd(i);setSh(null);}, style: {padding:"7px 12px",borderRadius:10,border:"1px solid",borderColor:on?tc(d.temp):"rgba(255,255,255,0.12)",background:on?bgc(d.temp):"rgba(255,255,255,0.03)",color:on?tc(d.temp):"#888",fontSize:11,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}, React.createElement('span', { style: {fontSize:16}}, d.condition), React.createElement('span', { style: {fontWeight:"bold"}}, d.date.split(" ").slice(0,2).join(" ")), React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 425}}, fmtTemp(d.temp,u.temp)));})
+, forecastData.slice(0,7).map(function(d,i){var on=iSd===i;return React.createElement('button', { key: i, onClick: function(){setSd(i);setSh(null);}, style: {padding:"7px 12px",borderRadius:10,border:"1px solid",borderColor:on?tc(d.temp):"rgba(255,255,255,0.12)",background:on?bgc(d.temp):"rgba(255,255,255,0.03)",color:on?tc(d.temp):"#888",fontSize:11,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}, React.createElement('span', { style: {fontSize:16}}, d.condition), React.createElement('span', { style: {fontWeight:"bold"}}, d.date.split(" ").slice(0,2).join(" ")), React.createElement('span', {}, fmtTemp(d.temp,u.temp)));})
 )
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"14px 10px",marginBottom:16}}
 , React.createElement('div', { style: {fontSize:11,color:"#888",marginBottom:10}}, "Temperature curve — tap an hour for full details"        )
@@ -1044,7 +1044,7 @@ return React.createElement('div', { key: i, onClick: function(){setSh(iSh===i?nu
 );
 })
 )
-, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",marginTop:4,fontSize:9,color:"#555"}}, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 439}}, fmtTemp(Math.round(minH),u.temp), " min" ), React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 439}}, fmtTemp(Math.round(maxH),u.temp), " max" ))
+, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",marginTop:4,fontSize:9,color:"#555"}}, React.createElement('span', {}, fmtTemp(Math.round(minH),u.temp), " min" ), React.createElement('span', {}, fmtTemp(Math.round(maxH),u.temp), " max" ))
 )
 , React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:6}}
 , hours.map(function(h,i){
@@ -1081,19 +1081,19 @@ React.createElement('div', { key: i, onClick: function(){setSh(iSh===i?null:i);}
 , isSel&&(
 React.createElement('div', { style: {marginTop:14,borderTop:"1px solid rgba(255,255,255,0.07)",paddingTop:12}}
 , React.createElement('div', { style: {background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"10px 12px",marginBottom:12,display:"flex",gap:20,flexWrap:"wrap"}}
-, hasSunHr&&React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 476}}, React.createElement('div', { style: {fontSize:9,color:"#ffd060",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}, "In Sun" ), React.createElement('div', { style: {fontSize:22,fontWeight:"bold",color:tc(suT)}}, fmtTemp(suT,u.temp)))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 477}}, React.createElement('div', { style: {fontSize:9,color:"#a0b4c8",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}, "In Shade" ), React.createElement('div', { style: {fontSize:22,fontWeight:"bold",color:tc(shT)}}, fmtTemp(shT,u.temp)))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 478}}, React.createElement('div', { style: {fontSize:9,color:"#aaa",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}, "Actual"), React.createElement('div', { style: {fontSize:22,fontWeight:"bold",color:col}}, fmtTemp(Math.round(h.temp),u.temp)))
+, hasSunHr&&React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#ffd060",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}, "In Sun" ), React.createElement('div', { style: {fontSize:22,fontWeight:"bold",color:tc(suT)}}, fmtTemp(suT,u.temp)))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#a0b4c8",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}, "In Shade" ), React.createElement('div', { style: {fontSize:22,fontWeight:"bold",color:tc(shT)}}, fmtTemp(shT,u.temp)))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#aaa",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}, "Actual"), React.createElement('div', { style: {fontSize:22,fontWeight:"bold",color:col}}, fmtTemp(Math.round(h.temp),u.temp)))
 )
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px 20px",fontSize:12}}
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 481}}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Wind"), React.createElement('div', { style: {color:wc(h.windMph),fontWeight:"bold"}}, fmtSpd(h.windMph,u.speed), " " , h.windDir), React.createElement('div', { style: {fontSize:10,color:"#666"}}, windCat(h.windMph)))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 482}}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Gusts"), React.createElement('div', { style: {color:wc(h.gustMph),fontWeight:"bold"}}, fmtSpd(h.gustMph,u.speed)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, windCat(h.gustMph)))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 483}}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Rain Chance" ), React.createElement('div', { style: {color:rc(h.rainChance),fontWeight:"bold"}}, h.rainChance, "%"), h.rainMm>0&&React.createElement('div', { style: {fontSize:10,color:rc(h.rainChance)}}, fmtRain(h.rainMm,u.rain), " expected" ))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 484}}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Humidity"), React.createElement('div', { style: {color:hc(h.humidity),fontWeight:"bold"}}, h.humidity, "%"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, "Dew " , fmtTemp(h.dewPoint,u.temp)))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 485}}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Pressure"), React.createElement('div', { style: {color:pc(h.pressure),fontWeight:"bold"}}, fmtPres(h.pressure,u.pressure)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, h.pressure>=1020?"High":h.pressure>=1010?"Normal":"Low"))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 486}}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "UV Index" ), React.createElement('div', { style: {color:uvCol(h.uv),fontWeight:"bold"}}, h.uv, " — "  , uvLbl(h.uv)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, uvProtect(h.uv)))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 487}}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Cloud Cover" ), React.createElement('div', { style: {color:"#aaa",fontWeight:"bold"}}, h.cloud, "%"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, h.cloud<20?"Clear":h.cloud<40?"Mostly clear":h.cloud<70?"Partly cloudy":"Overcast"))
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 488}}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Visibility"), React.createElement('div', { style: {color:"#aabbcc",fontWeight:"bold",fontSize:11}}, h.visibility))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Wind"), React.createElement('div', { style: {color:wc(h.windMph),fontWeight:"bold"}}, fmtSpd(h.windMph,u.speed), " " , h.windDir), React.createElement('div', { style: {fontSize:10,color:"#666"}}, windCat(h.windMph)))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Gusts"), React.createElement('div', { style: {color:wc(h.gustMph),fontWeight:"bold"}}, fmtSpd(h.gustMph,u.speed)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, windCat(h.gustMph)))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Rain Chance" ), React.createElement('div', { style: {color:rc(h.rainChance),fontWeight:"bold"}}, h.rainChance, "%"), h.rainMm>0&&React.createElement('div', { style: {fontSize:10,color:rc(h.rainChance)}}, fmtRain(h.rainMm,u.rain), " expected" ))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Humidity"), React.createElement('div', { style: {color:hc(h.humidity),fontWeight:"bold"}}, h.humidity, "%"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, "Dew " , fmtTemp(h.dewPoint,u.temp)))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Pressure"), React.createElement('div', { style: {color:pc(h.pressure),fontWeight:"bold"}}, fmtPres(h.pressure,u.pressure)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, h.pressure>=1020?"High":h.pressure>=1010?"Normal":"Low"))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "UV Index" ), React.createElement('div', { style: {color:uvCol(h.uv),fontWeight:"bold"}}, h.uv, " — "  , uvLbl(h.uv)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, uvProtect(h.uv)))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Cloud Cover" ), React.createElement('div', { style: {color:"#aaa",fontWeight:"bold"}}, h.cloud, "%"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, h.cloud<20?"Clear":h.cloud<40?"Mostly clear":h.cloud<70?"Partly cloudy":"Overcast"))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Visibility"), React.createElement('div', { style: {color:"#aabbcc",fontWeight:"bold",fontSize:11}}, h.visibility))
 )
 , React.createElement('div', { style: {marginTop:12,background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#9a8c7a",lineHeight:1.6}}, msgs.join(" "))
 )
@@ -1146,7 +1146,7 @@ var ySteps=4,yLabels=[];
 for(var yi=0;yi<=ySteps;yi++){var yv=minV+(range*yi/ySteps);yLabels.push({y:yOf(yv),val:Math.round(yv)});}
 var xEvery=iUh?Math.ceil(points.length/14):1;
 return (
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 541}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:3,color:"#ff7700",textTransform:"uppercase",marginBottom:16}}, "Weather Graphs" )
 , React.createElement('div', { style: {display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}
 , gTabs.map(function(t){var on=iAg===t.id;return React.createElement('button', { key: t.id, onClick: function(){setAg(t.id);setHov(null);}, style: {padding:"5px 10px",borderRadius:20,border:"1px solid",borderColor:on?"#ff7700":"rgba(255,255,255,0.12)",background:on?"rgba(255,119,0,0.18)":"rgba(255,255,255,0.03)",color:on?"#ffaa44":"#888",fontSize:11,cursor:"pointer"}}, t.icon, " " , t.label);})
@@ -1158,12 +1158,12 @@ React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lin
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"10px 4px 6px",marginBottom:16,overflowX:"auto"}}
 , React.createElement('svg', { viewBox: "0 0 "+svgW+" "+svgH, style: {width:"100%",minWidth:320,height:"auto",display:"block"}, onMouseLeave: function(){setHov(null);}}
 , yLabels.map(function(yl,i){return React.createElement('g', { key: i}, React.createElement('line', { x1: padL, y1: yl.y, x2: svgW-padR, y2: yl.y, stroke: "rgba(255,255,255,0.06)", strokeWidth: "1"}), React.createElement('text', { x: padL-4, y: yl.y+4, textAnchor: "end", fontSize: "9", fill: "#555"}, fmtV(yl.val)));})
-, React.createElement('defs', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 553}}, React.createElement('linearGradient', { id: "ag", x1: "0", y1: "0", x2: "0", y2: "1"}, React.createElement('stop', { offset: "0%", stopColor: colV(maxV), stopOpacity: "0.3"}), React.createElement('stop', { offset: "100%", stopColor: colV(maxV), stopOpacity: "0.02"})))
+, React.createElement('defs', {}, React.createElement('linearGradient', { id: "ag", x1: "0", y1: "0", x2: "0", y2: "1"}, React.createElement('stop', { offset: "0%", stopColor: colV(maxV), stopOpacity: "0.3"}), React.createElement('stop', { offset: "100%", stopColor: colV(maxV), stopOpacity: "0.02"})))
 , React.createElement('path', { d: areaD, fill: "url(#ag)"})
 , React.createElement('path', { d: pathD, fill: "none", stroke: colV(maxV), strokeWidth: "2", strokeLinejoin: "round"})
 , peaks.map(function(pi){return React.createElement('g', { key: "pk"+pi}, React.createElement('circle', { cx: xOf(pi), cy: yOf(points[pi].val), r: "4", fill: colV(points[pi].val), opacity: "0.9"}), React.createElement('text', { x: xOf(pi), y: yOf(points[pi].val)-8, textAnchor: "middle", fontSize: "9", fill: colV(points[pi].val), fontWeight: "bold"}, fmtV(points[pi].val)), React.createElement('text', { x: xOf(pi), y: yOf(points[pi].val)-18, textAnchor: "middle", fontSize: "8", fill: "#888"}, "Peak"));})
 , troughs.map(function(ti){return React.createElement('g', { key: "tr"+ti}, React.createElement('circle', { cx: xOf(ti), cy: yOf(points[ti].val), r: "3", fill: "#4a9fd4", opacity: "0.9"}), React.createElement('text', { x: xOf(ti), y: yOf(points[ti].val)+16, textAnchor: "middle", fontSize: "9", fill: "#4a9fd4"}, fmtV(points[ti].val)));})
-, iHov!==null&&React.createElement('g', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 558}}, React.createElement('line', { x1: xOf(iHov), y1: padT, x2: xOf(iHov), y2: padT+chartH, stroke: "rgba(255,255,255,0.2)", strokeWidth: "1", strokeDasharray: "4,3"}), React.createElement('circle', { cx: xOf(iHov), cy: yOf(points[iHov].val), r: "5", fill: colV(points[iHov].val), stroke: "#fff", strokeWidth: "1.5"}))
+, iHov!==null&&React.createElement('g', {}, React.createElement('line', { x1: xOf(iHov), y1: padT, x2: xOf(iHov), y2: padT+chartH, stroke: "rgba(255,255,255,0.2)", strokeWidth: "1", strokeDasharray: "4,3"}), React.createElement('circle', { cx: xOf(iHov), cy: yOf(points[iHov].val), r: "5", fill: colV(points[iHov].val), stroke: "#fff", strokeWidth: "1.5"}))
 , points.map(function(p,i){return React.createElement('rect', { key: i, x: xOf(i)-step/2, y: padT, width: step, height: chartH, fill: "transparent", onMouseEnter: function(){setHov(i);}, onClick: function(){setHov(iHov===i?null:i);}, style: {cursor:"crosshair"}});} )
 , points.map(function(p,i){if(i%xEvery!==0)return null;var lb=iUh?p.label.split(" ")[0]:p.label.split(" ").slice(0,2).join(" ");return React.createElement('text', { key: i, x: xOf(i), y: svgH-4, textAnchor: "middle", fontSize: "8", fill: "#555", transform: "rotate(-30,"+xOf(i)+","+(svgH-4)+")"}, lb);})
 )
@@ -1230,7 +1230,7 @@ var windyUrl="https://embed.windy.com/embed2.html"
 +"&type=map&location=coordinates&detail=&metricWind=mph&metricTemp=%C2%B0C&radarRange=-1";
 var activeLayer=layers.find(function(l){return l.id===iLayer;})||layers[0];
 return (
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 625}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:3,color:"#ff7700",textTransform:"uppercase",marginBottom:16}}, "Map and Radar"  )
 /* Layer selector */
 , React.createElement('div', { style: {display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}
@@ -1264,7 +1264,7 @@ loading: "lazy"}
 )
 /* Forecast mini-cards */
 , forecastData.length>0&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 659}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:10,letterSpacing:2,color:"#555",textTransform:"uppercase",marginBottom:8}}, "6-Day Forecast Snapshot"  )
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:8}}
 , forecastData.slice(0,6).map(function(d,i){
@@ -1330,14 +1330,14 @@ localEx=[
 }
 function Card(r,i){
 return React.createElement('div', { key: i, style: {background:"rgba(255,255,255,0.03)",border:"1px solid "+(r.color||"#555")+"44",borderRadius:12,padding:"14px",display:"flex",flexDirection:"column",gap:5}}
-, React.createElement('div', { style: {display:"flex",alignItems:"center",gap:8,marginBottom:2}}, React.createElement('span', { style: {fontSize:28}}, r.icon), React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 725}}, React.createElement('div', { style: {fontSize:11,fontWeight:"bold",color:"#e8dcc8",lineHeight:1.3}}, r.title), React.createElement('div', { style: {fontSize:9,color:"#555",marginTop:1}}, r.location)))
+, React.createElement('div', { style: {display:"flex",alignItems:"center",gap:8,marginBottom:2}}, React.createElement('span', { style: {fontSize:28}}, r.icon), React.createElement('div', {}, React.createElement('div', { style: {fontSize:11,fontWeight:"bold",color:"#e8dcc8",lineHeight:1.3}}, r.title), React.createElement('div', { style: {fontSize:9,color:"#555",marginTop:1}}, r.location)))
 , React.createElement('div', { style: {fontSize:20,fontWeight:"bold",color:r.color||"#fff",lineHeight:1}}, r.value)
 , React.createElement('div', { style: {fontSize:9,color:"#666"}}, r.date)
 , React.createElement('div', { style: {fontSize:11,color:"#7a6e5e",lineHeight:1.5}}, r.context)
 );
 }
 return (
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 732}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:3,color:"#ff7700",textTransform:"uppercase",marginBottom:16}}, "Weather Extremes" )
 , localEx.length>0&&React.createElement('div', { style: {marginBottom:24}}, React.createElement('div', { style: {fontSize:11,color:"#ff9944",letterSpacing:2,marginBottom:10}}, "YOUR LOCATION FORECAST EXTREMES"   ), React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:8}}, localEx.map(function(r,i){return Card(r,i);})))
 , React.createElement('div', { style: {display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:12}}
@@ -1367,7 +1367,7 @@ var subStr=[place.admin2,place.admin3].filter(Boolean).join(", ");
 return (
 React.createElement('button', { key: i, onClick: function(){onSelect(place);onClose();}, style: {display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 14px",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,255,255,0.04)",color:"#bbb",fontSize:13,cursor:"pointer",textAlign:"left"}}
 , React.createElement('span', { style: {fontSize:20,flexShrink:0}}, "📍")
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 762}}
+, React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:13,color:"#e8dcc8",fontWeight:"bold"}}, nameStr)
 , subStr&&React.createElement('div', { style: {fontSize:10,color:"#555",marginTop:1}}, subStr)
 , React.createElement('div', { style: {fontSize:10,color:"#444",marginTop:1}}
@@ -1503,8 +1503,8 @@ React.createElement('div', { style: {position:"fixed",top:0,left:0,right:0,botto
 )
 , React.createElement('div', { style: {textAlign:"center",fontSize:12,color:"#666",marginTop:6}}
 , iMode==="login"
-?React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 898}}, "No account? "  , React.createElement('button', { onClick: function(){setMode("signup");setErr("");}, style: {background:"none",border:"none",color:"#ff9944",fontSize:12,cursor:"pointer",fontFamily:"Georgia,serif"}}, "Sign up free"  ))
-:React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 899}}, "Already have an account? "    , React.createElement('button', { onClick: function(){setMode("login");setErr("");}, style: {background:"none",border:"none",color:"#ff9944",fontSize:12,cursor:"pointer",fontFamily:"Georgia,serif"}}, "Sign in" ))
+?React.createElement('span', {}, "No account? "  , React.createElement('button', { onClick: function(){setMode("signup");setErr("");}, style: {background:"none",border:"none",color:"#ff9944",fontSize:12,cursor:"pointer",fontFamily:"Georgia,serif"}}, "Sign up free"  ))
+:React.createElement('span', {}, "Already have an account? "    , React.createElement('button', { onClick: function(){setMode("login");setErr("");}, style: {background:"none",border:"none",color:"#ff9944",fontSize:12,cursor:"pointer",fontFamily:"Georgia,serif"}}, "Sign in" ))
 
 )
 )
@@ -1739,7 +1739,7 @@ return React.createElement('button', { onClick: function(){p.set(p.val);}, style
 }
 function SliderRow(sp){
 return React.createElement('div', { style: row}
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1134}}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, sp.label), React.createElement('div', { style: {fontSize:10,color:"#666"}}, sp.desc))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, sp.label), React.createElement('div', { style: {fontSize:10,color:"#666"}}, sp.desc))
 , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:10}}
 , React.createElement('input', { type: "range", min: sp.min, max: sp.max, step: sp.step||1, value: sp.val, onChange: function(e){sp.onChange(Number(e.target.value));}, style: {width:90,accentColor:"#ff7700"}})
 , React.createElement('span', { style: {fontSize:12,color:"#ffaa44",width:44,textAlign:"right"}}, sp.val, sp.unit)
@@ -1748,7 +1748,7 @@ return React.createElement('div', { style: row}
 }
 function Toggle(tp){
 return React.createElement('div', { style: row}
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1143}}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, tp.label), tp.desc&&React.createElement('div', { style: {fontSize:10,color:"#666"}}, tp.desc))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, tp.label), tp.desc&&React.createElement('div', { style: {fontSize:10,color:"#666"}}, tp.desc))
 , React.createElement('button', { onClick: function(){tp.onChange(!tp.val);}, style: {width:44,height:24,borderRadius:12,border:"none",background:tp.val?"#ff7700":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}
 , React.createElement('span', { style: {position:"absolute",top:2,left:tp.val?22:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",display:"block"}})
 )
@@ -1765,14 +1765,14 @@ React.createElement('div', { style: {position:"fixed",top:0,left:0,right:0,botto
 , tabs.map(function(t){var on=iTab===t.id;return React.createElement('button', { key: t.id, onClick: function(){setTab(t.id);}, style: {padding:"9px 14px",background:"none",border:"none",borderBottom:on?"2px solid #ff7700":"2px solid transparent",color:on?"#ffaa44":"#666",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}, t.label);})
 )
 , React.createElement('div', { style: {overflowY:"auto",flex:1,padding:"16px 22px 22px"}}
-, iTab==="units"&&React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1160}}
+, iTab==="units"&&React.createElement('div', {}
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Temperature"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "C", cur: units.temp, set: function(v){handleSaveUnits(Object.assign({},units,{temp:v}));}}, "C"), React.createElement(Btn, { val: "F", cur: units.temp, set: function(v){handleSaveUnits(Object.assign({},units,{temp:v}));}}, "F")))
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Wind Speed" ), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mph", cur: units.speed, set: function(v){handleSaveUnits(Object.assign({},units,{speed:v}));}}, "mph"), React.createElement(Btn, { val: "kmh", cur: units.speed, set: function(v){handleSaveUnits(Object.assign({},units,{speed:v}));}}, "km/h")))
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Precipitation"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mm", cur: units.rain, set: function(v){handleSaveUnits(Object.assign({},units,{rain:v}));}}, "mm"), React.createElement(Btn, { val: "in", cur: units.rain, set: function(v){handleSaveUnits(Object.assign({},units,{rain:v}));}}, "in")))
 , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0"}}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Pressure"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mbar", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}}, "mbar"), React.createElement(Btn, { val: "pa", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}}, "Pa"), React.createElement(Btn, { val: "bar", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}}, "bar")))
 , user&&React.createElement('div', { style: {fontSize:11,color:"#4a9fd4",marginTop:8}}, "Synced to your account"   )
 )
-, iTab==="alerts"&&React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1167}}
+, iTab==="alerts"&&React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#888",marginBottom:14,lineHeight:1.6}}, "Drag sliders to adjust when alerts trigger."      )
 , React.createElement(SliderRow, { label: "Heat Alert" , desc: "Alert when daily high exceeds this"     , min: 20, max: 45, val: alertPrefs.tempHeat||30, unit: "C", onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{tempHeat:v}));}})
 , React.createElement(SliderRow, { label: "Rain Alert" , desc: "Alert when rain probability exceeds this"     , min: 20, max: 90, val: alertPrefs.rain||60, unit: "%", onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{rain:v}));}})
@@ -1781,14 +1781,14 @@ React.createElement('div', { style: {position:"fixed",top:0,left:0,right:0,botto
 , React.createElement(Toggle, { label: "Storm Risk Alerts"  , desc: "Alert when thunderstorm conditions likely"    , val: alertPrefs.storm!==false, onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{storm:v}));}})
 , user&&React.createElement('div', { style: {fontSize:11,color:"#4a9fd4",marginTop:12}}, "Preferences synced to your account"    )
 )
-, iTab==="display"&&React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1176}}
+, iTab==="display"&&React.createElement('div', {}
 , React.createElement(Toggle, { label: "Show feel-like temperatures"  , val: alertPrefs.showFeelLike!==false, onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{showFeelLike:v}));}})
 , React.createElement(Toggle, { label: "Show storm risk badge"   , val: alertPrefs.showStormBadge!==false, onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{showStormBadge:v}));}})
 , React.createElement(Toggle, { label: "Show UV index on cards"    , val: alertPrefs.showUV!==false, onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{showUV:v}));}})
 , React.createElement(Toggle, { label: "Auto-notify on page load"   , desc: "Browser notification when you open the app"      , val: alertPrefs.autoNotify===true, onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{autoNotify:v}));}})
 , user&&React.createElement('div', { style: {fontSize:11,color:"#4a9fd4",marginTop:12}}, "Preferences synced to your account"    )
 )
-, iTab==="roles"&&React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1183}}
+, iTab==="roles"&&React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#888",marginBottom:14,lineHeight:1.6}}, "Choose up to 3 roles to personalise your forecast. Active roles are highlighted."            )
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}
 , USER_ROLES.map(function(role){
@@ -1812,7 +1812,7 @@ cursor:disabled?"not-allowed":"pointer",textAlign:"left",opacity:disabled?0.5:1}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:8}}, iLocalRoles.length===0?"No roles selected":iLocalRoles.length+" of 3 selected")
 , user&&React.createElement('div', { style: {fontSize:11,color:"#4a9fd4"}}, "Synced to your account"   )
 )
-, iTab==="notifications"&&React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1207}}
+, iTab==="notifications"&&React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#888",marginBottom:14,lineHeight:1.6}}, "Control how and when The Weather Centre notifies you."        )
 , React.createElement(Toggle, { label: "All Notifications" , desc: "Master switch for all notifications"    , val: alertPrefs.notificationsEnabled!==false, onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{notificationsEnabled:v}));}})
 , React.createElement(Toggle, { label: "Browser Notifications" , desc: "Pop-up alerts in your browser"    , val: alertPrefs.browserNotify!==false&&alertPrefs.notificationsEnabled!==false, onChange: function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{browserNotify:v}));}})
@@ -1828,19 +1828,19 @@ cursor:disabled?"not-allowed":"pointer",textAlign:"left",opacity:disabled?0.5:1}
 )
 , user&&React.createElement('div', { style: {fontSize:11,color:"#4a9fd4",marginTop:12}}, "Preferences synced to your account"    )
 )
-, iTab==="account"&&React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1223}}
+, iTab==="account"&&React.createElement('div', {}
 , !user
 ?React.createElement('div', { style: {textAlign:"center",padding:"28px 0"}}
 , React.createElement('div', { style: {fontSize:36,marginBottom:12}}, "👤")
 , React.createElement('div', { style: {fontSize:13,color:"#888",marginBottom:16}}, "Sign in to manage your account and sync preferences."        )
 , React.createElement('button', { onClick: function(){onClose();onOpenAuth();}, style: {padding:"10px 24px",borderRadius:12,border:"none",background:"#ff7700",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"Georgia,serif"}}, "Sign In / Sign Up"    )
 )
-:React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1230}}
+:React.createElement('div', {}
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"14px",marginBottom:16,display:"flex",gap:14,alignItems:"center"}}
 , React.createElement('div', { style: {width:44,height:44,borderRadius:"50%",background:"rgba(255,119,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}
 , user.photoURL?React.createElement('img', { src: user.photoURL, style: {width:44,height:44,borderRadius:"50%"}, alt: ""}):"👤"
 )
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1235}}
+, React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:14,color:"#e8dcc8",fontWeight:"bold"}}, user.displayName||"No name set")
 , React.createElement('div', { style: {fontSize:12,color:"#666",marginTop:2}}, user.email)
 )
@@ -1854,7 +1854,7 @@ cursor:disabled?"not-allowed":"pointer",textAlign:"left",opacity:disabled?0.5:1}
 )
 , iProfileMsg&&React.createElement('div', { style: {fontSize:11,color:"#4adf88",marginBottom:8}}, iProfileMsg)
 , React.createElement('div', { style: row}
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1249}}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, "Password"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, "Send reset link to email"    ))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, "Password"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, "Send reset link to email"    ))
 , React.createElement('button', { onClick: handleChangePassword, style: {padding:"6px 12px",borderRadius:9,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",color:"#aaa",fontSize:12,cursor:"pointer",fontFamily:"Georgia,serif"}}, "Reset")
 )
 , iPwMsg&&React.createElement('div', { style: {fontSize:11,color:iPwMsg.includes("sent")?"#4adf88":"#ff9944",marginBottom:8}}, iPwMsg)
@@ -1922,7 +1922,7 @@ React.createElement('div', { style: {position:"fixed",top:0,left:0,right:0,botto
 /* Share card — this is what gets screenshotted */
 , React.createElement('div', { ref: cardRef, style: {background:"linear-gradient(135deg,#0a0a1a 0%,#0d1525 60%,#0a0f1e 100%)",border:"1px solid rgba(255,119,0,0.25)",borderRadius:16,padding:"20px",marginBottom:16,fontFamily:"Georgia,serif"}}
 , React.createElement('div', { style: {display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1317}}
+, React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:9,letterSpacing:4,color:"#ff7700",textTransform:"uppercase",marginBottom:3}}, "The Weather Centre"  )
 , React.createElement('div', { style: {fontSize:16,color:"#fff",fontWeight:"bold"}}, "📍 " , locationName)
 , React.createElement('div', { style: {fontSize:10,color:"#666",marginTop:2}}, new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}))
@@ -1941,10 +1941,10 @@ return React.createElement('div', { key: i, style: {flex:1,background:"rgba(255,
 })
 )
 , React.createElement('div', { style: {display:"flex",gap:14,justifyContent:"center",fontSize:11,color:"#7a6e5e",borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1336}}, "💨 " , fmtSpd(today.windMph,u.speed))
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1337}}, "💧 " , today.humidity, "%")
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1338}}, "☁️ " , today.rain, "%")
-, today.uvMax!=null&&React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1339}}, "☀️ UV "  , today.uvMax)
+, React.createElement('span', {}, "💨 " , fmtSpd(today.windMph,u.speed))
+, React.createElement('span', {}, "💧 " , today.humidity, "%")
+, React.createElement('span', {}, "☁️ " , today.rain, "%")
+, today.uvMax!=null&&React.createElement('span', {}, "☀️ UV "  , today.uvMax)
 )
 , React.createElement('div', { style: {textAlign:"center",fontSize:8,color:"#333",marginTop:8,letterSpacing:2}}, "THE WEATHER CENTRE"  )
 )
@@ -2073,8 +2073,8 @@ var tdSty={fontSize:11,color:"#e8dcc8",padding:"5px 6px",textAlign:"center",bord
 return (
 React.createElement('div', { style: {overflowX:"auto"}}
 , React.createElement('table', { style: {width:"100%",borderCollapse:"collapse",fontSize:11}}
-, React.createElement('thead', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1468}}
-, React.createElement('tr', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1469}}
+, React.createElement('thead', {}
+, React.createElement('tr', {}
 , React.createElement('th', { style: thSty}, "hPa")
 , React.createElement('th', { style: thSty}, "T (" , tUnit(), ")")
 , React.createElement('th', { style: thSty}, "Td (" , tUnit(), ")")
@@ -2083,7 +2083,7 @@ React.createElement('div', { style: {overflowX:"auto"}}
 , React.createElement('th', { style: thSty}, "Wb (°C)" )
 )
 )
-, React.createElement('tbody', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1478}}
+, React.createElement('tbody', {}
 , levels.map(function(l,i){
 var wb=l.T!=null&&l.Td!=null?cvtT(wetBulb(l.T,l.Td,l.p)):"-";
 var dirs=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
@@ -2183,7 +2183,7 @@ return (
 React.createElement('div', { style: sectionSty}
 , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:10,marginBottom:14}}
 , React.createElement('span', { style: {fontSize:18}}, "🌩️")
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1576}}
+, React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:13,color:"#88ccff",letterSpacing:2,textTransform:"uppercase"}}, "Meteorology Dashboard" )
 , React.createElement('div', { style: {fontSize:10,color:"#555",marginTop:1}}, "Advanced upper-air analysis — "    , locationName)
 )
@@ -2194,7 +2194,7 @@ React.createElement('div', { style: sectionSty}
 , iLoading&&React.createElement('div', { style: {textAlign:"center",padding:"32px 0",color:"#555",fontSize:13}}, "Loading upper-air data…"  )
 , iErr&&React.createElement('div', { style: {color:"#ff6666",fontSize:12,textAlign:"center",padding:"16px 0"}}, iErr)
 , !iLoading&&!iErr&&iData&&iTab==="indices"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1587}}
+React.createElement('div', {}
 /* Day selector */
 , React.createElement('div', { style: {display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:4}}
 , (forecastData||[]).slice(0,7).map(function(d,i){
@@ -2203,7 +2203,7 @@ var dayCape=iData.dailyCape?iData.dailyCape[i]:null;
 var cColor=dayCape!=null?capeColour(dayCape):"#555";
 return React.createElement('button', { key: i, onClick: function(){setMetDayIdx(i);}, style: {flex:"0 0 auto",padding:"6px 10px",borderRadius:10,border:"1px solid",borderColor:on?cColor:"rgba(255,255,255,0.08)",background:on?"rgba(255,255,255,0.07)":"transparent",color:on?"#e8dcc8":"#666",fontSize:11,cursor:"pointer",minWidth:52,textAlign:"center"}}
 , React.createElement('div', { style: {fontSize:9,color:cColor,marginBottom:2}}, "●")
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1596}}, d.date.split(" ")[0])
+, React.createElement('div', {}, d.date.split(" ")[0])
 );
 })
 )
@@ -2225,7 +2225,7 @@ srh=fday.windMph>25?200:fday.windMph>15?80:20;
 wbSfc=fday.temp!=null&&fday.humidity!=null?(fday.temp*(Math.atan(0.151977*Math.pow(fday.humidity+8.313659,0.5))+Math.atan(fday.temp+fday.humidity)-Math.atan(fday.humidity-1.676331))-4.686035).toFixed(1):null;
 }
 return (
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1618}}
+React.createElement('div', {}
 , !isToday&&React.createElement('div', { style: {fontSize:10,color:"#ff9944",marginBottom:10,padding:"6px 10px",background:"rgba(255,119,0,0.07)",borderRadius:8}}, "⚠️ Future day values are estimated from surface forecast — live upper-air data only available for today."                )
 , isToday&&React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Live upper-air indices — "    , fday.date||"Today")
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}
@@ -2256,7 +2256,7 @@ sub: isToday?"~1500m altitude (live)":"~1500m altitude (estimated)",
 desc: "850hPa temperature. Key level for thunderstorm forecasting and warm-air advection."         })
 )
 /* Pressure level quick grid — today only */
-, isToday&&React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1649}}
+, isToday&&React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:10,color:"#555",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}, "Pressure Level Quick Read"   )
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}
 , [850,700,500,400,300].map(function(p){
@@ -2296,7 +2296,7 @@ return React.createElement('div', { key: i, title: d.date+": CAPE ~"+Math.round(
 )
 )
 , !iLoading&&!iErr&&iData&&iTab==="skewtable"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1689}}
+React.createElement('div', {}
 /* Min/Max toggle */
 , React.createElement('div', { style: {display:"flex",gap:6,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}
 , React.createElement('span', { style: {fontSize:10,color:"#555",letterSpacing:1,textTransform:"uppercase"}}, "Show:")
@@ -2326,7 +2326,7 @@ return l;
 )
 )
 , iTab==="radar"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1719}}
+React.createElement('div', {}
 , React.createElement('div', { style: {display:"flex",gap:8,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}
 , React.createElement('div', { style: {fontSize:11,color:"#555"}}, "Live precipitation radar — RainViewer"    )
 , React.createElement('button', { onClick: function(){setRadarAnim(!iRadarAnim);setRadarKey(function(k){return k+1;});},
@@ -2427,7 +2427,7 @@ var acts=CONSTRUCTION_ACTIVITIES.map(function(a){return a.check({temp:d.temp,low
 var worst=acts.includes("stop")?"#ff2200":acts.includes("delay")?"#ff8800":acts.includes("caution")?"#ffcc00":"#44cc66";
 return React.createElement('button', { key: i, onClick: function(){setDayIdx(i);}, style: {flex:"0 0 auto",padding:"6px 10px",borderRadius:10,border:"1px solid",borderColor:on?worst:"rgba(255,255,255,0.08)",background:on?"rgba(255,255,255,0.07)":"transparent",color:on?"#e8dcc8":"#666",fontSize:11,cursor:"pointer",minWidth:52,textAlign:"center"}}
 , React.createElement('div', { style: {fontSize:9,color:worst,marginBottom:2}}, "●")
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1820}}, d.date.split(" ")[0])
+, React.createElement('div', {}, d.date.split(" ")[0])
 );
 })
 )
@@ -2437,7 +2437,7 @@ return React.createElement('button', { key: i, onClick: function(){setDayIdx(i);
 )
 /* ── Go/No-Go Tab ── */
 , iTab==="gonogo"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1830}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}
 , day.date, " · "  , day.condition, " · "  , cvtT(day.temp), tUnit(), " · Wind "   , day.windMph, "mph"
 )
@@ -2451,7 +2451,7 @@ return React.createElement(ActivityCard, { key: act.id, activity: act, weather: 
 )
 /* ── Site Conditions Tab ── */
 , iTab==="conditions"&&day&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1844}}
+React.createElement('div', {}
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}
 /* Wind */
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid "+(day.windMph>=38?"rgba(255,34,0,0.4)":day.windMph>=23?"rgba(255,136,0,0.3)":"rgba(255,255,255,0.07)")}}
@@ -2513,7 +2513,7 @@ React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lin
 )
 /* ── 7-Day Planning Tab ── */
 , iTab==="forecast"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 1906}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Tap a day to see full go/no-go assessment"       )
 , days.slice(0,7).map(function(d,i){
 var dw={temp:d.temp,low:d.low,windMph:d.windMph,gustMph:d.gustMph,rain:d.rain,rainMm:d.rainMm,humidity:d.humidity,lightning:(d.condition.includes("⛈")||(d.temp>=22&&d.humidity>=70&&d.rain>=60)),vis:d.condition.includes("🌫")?150:5000};
@@ -2675,7 +2675,7 @@ var da=marineGoNo(vesselObj,dbf,dWave,iSailType);
 var on=iDayIdx===i;
 return React.createElement('button', { key: i, onClick: function(){setDayIdx(i);}, style: {flex:"0 0 auto",padding:"6px 10px",borderRadius:10,border:"1px solid",borderColor:on?da.color:"rgba(255,255,255,0.08)",background:on?"rgba(255,255,255,0.07)":"transparent",color:on?"#e8dcc8":"#666",fontSize:11,cursor:"pointer",minWidth:52,textAlign:"center"}}
 , React.createElement('div', { style: {fontSize:9,color:da.color,marginBottom:2}}, "●")
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2068}}, d.date.split(" ")[0])
+, React.createElement('div', {}, d.date.split(" ")[0])
 );
 })
 )
@@ -2685,7 +2685,7 @@ return React.createElement('button', { key: i, onClick: function(){setDayIdx(i);
 )
 /* ── Overview Tab ── */
 , iTab==="overview"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2078}}
+React.createElement('div', {}
 , React.createElement('div', { style: {display:"flex",gap:16,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}
 , React.createElement(BeaufortGauge, { n: bf.n})
 , React.createElement('div', { style: {flex:1}}
@@ -2721,14 +2721,14 @@ return React.createElement('div', { key: i, style: {background:"rgba(255,255,255
 /* VHF warnings */
 , warnings.length>0&&React.createElement('div', { style: {marginTop:12}}
 , React.createElement('div', { style: {fontSize:10,color:"#555",letterSpacing:2,textTransform:"uppercase",marginBottom:6}}, "📻 Marine Warnings"  )
-, warnings.map(function(w,i){return React.createElement('div', { key: i, style: {padding:"8px 12px",borderRadius:8,background:w.color+"15",border:"1px solid "+w.color+"44",marginBottom:4,fontSize:11,color:w.color}}, React.createElement('b', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2114}}, w.code), " — "  , w.desc);})
+, warnings.map(function(w,i){return React.createElement('div', { key: i, style: {padding:"8px 12px",borderRadius:8,background:w.color+"15",border:"1px solid "+w.color+"44",marginBottom:4,fontSize:11,color:w.color}}, React.createElement('b', {}, w.code), " — "  , w.desc);})
 )
 , warnings.length===0&&React.createElement('div', { style: {marginTop:10,padding:"8px 12px",borderRadius:8,background:"rgba(68,204,102,0.08)",border:"1px solid rgba(68,204,102,0.2)",fontSize:11,color:"#44cc66"}}, "✓ No active marine warnings"    )
 )
 )
 /* ── Vessel Go/No-Go Tab ── */
 , iTab==="vessel"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2121}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Bf " , bf.n, " " , bf.label, " · "  , waveH.toFixed(1), "m waves · "   , day.date)
 , VESSELS.map(function(v){
 var r=marineGoNo(v,bf,waveH,iSailType);
@@ -2751,15 +2751,15 @@ return React.createElement('div', { key: v.id, style: {padding:"12px 14px",borde
 )
 /* ── Marine Data Tab ── */
 , iTab==="marine"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2144}}
+React.createElement('div', {}
 , iMarineLoading&&React.createElement('div', { style: {textAlign:"center",padding:"24px",color:"#555",fontSize:12}}, "Loading marine data…"  )
 , !iMarineLoading&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2147}}
+React.createElement('div', {}
 /* Beaufort full card */
 , React.createElement('div', { style: {background:"rgba(74,159,212,0.07)",border:"1px solid rgba(74,159,212,0.2)",borderRadius:12,padding:"14px",marginBottom:12}}
 , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:12}}
 , React.createElement(BeaufortGauge, { n: bf.n})
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2152}}
+, React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:16,color:"#88ddff",fontWeight:"bold"}}, "Beaufort " , bf.n, " — "  , bf.label)
 , React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",marginTop:2}}, bf.desc)
 , React.createElement('div', { style: {fontSize:11,color:"#666",marginTop:4}}, "Typical wave height: "   , bf.wave)
@@ -2806,8 +2806,8 @@ React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lin
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(255,255,255,0.06)"}}
 , React.createElement('div', { style: {fontSize:10,color:"#555",marginBottom:6,letterSpacing:1}}, "🌀 CURRENT & DRIFT ESTIMATE"    )
 , React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Estimated wind-driven surface current: "
-    , React.createElement('span', { style: {color:"#88ddff"}}, (windKt*0.03).toFixed(1), "kt"), " downwind" , React.createElement('br', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2199}}), "Estimated tidal drift: "
-   , React.createElement('span', { style: {color:"#88ddff"}}, "0.5–2kt"), " (varies by location — check local tidal atlas)"        , React.createElement('br', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2200}})
+    , React.createElement('span', { style: {color:"#88ddff"}}, (windKt*0.03).toFixed(1), "kt"), " downwind" , React.createElement('br', {}), "Estimated tidal drift: "
+   , React.createElement('span', { style: {color:"#88ddff"}}, "0.5–2kt"), " (varies by location — check local tidal atlas)"        , React.createElement('br', {})
 , React.createElement('span', { style: {color:"#555",fontSize:10}}, "For precise current data, consult Admiralty tidal stream atlas for your area."           )
 )
 )
@@ -2817,7 +2817,7 @@ React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lin
 )
 /* ── Tides & Currents Tab ── */
 , iTab==="tides"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2210}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Astronomical tide prediction for "    , day.date, " · "  , locationName)
 , React.createElement('div', { style: {fontSize:10,color:"#666",marginBottom:12,padding:"6px 10px",background:"rgba(255,200,0,0.06)",border:"1px solid rgba(255,200,0,0.15)",borderRadius:8}}, "⚠️ Approximate tidal predictions only. Always verify with Admiralty Tide Tables or local harbour authority."
 
@@ -2849,13 +2849,13 @@ return React.createElement('div', { key: h, style: {flex:1,background:"rgba(74,1
 })
 )
 , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",fontSize:9,color:"#444"}}
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2242}}, "00:00"), React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2242}}, "06:00"), React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2242}}, "12:00"), React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2242}}, "18:00"), React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2242}}, "24:00")
+, React.createElement('span', {}, "00:00"), React.createElement('span', {}, "06:00"), React.createElement('span', {}, "12:00"), React.createElement('span', {}, "18:00"), React.createElement('span', {}, "24:00")
 )
 )
 )
 /* ── Passage Planner Tab ── */
 , iTab==="passage"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2248}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Hourly sailing window — "    , vesselObj.icon, " " , vesselObj.label, " · "  , sailTypeObj.icon, " " , sailTypeObj.label, " · "  , day.date)
 , hourlyWindows.length===0&&React.createElement('div', { style: {textAlign:"center",padding:"24px",color:"#555",fontSize:12}}, "Loading marine hourly data…"   )
 , hourlyWindows.map(function(hw,i){
@@ -2982,8 +2982,7 @@ mixed:[
 {months:[3,4,5,6,7,8,9,10],task:"🐄 Grazing",check:grazing.status==="go"?"Suitable":"Restricted",color:grazing.color},
 {months:[4,5,6,7,8,9],task:"💊 Spraying",check:spray.status==="go"?"Open":"Closed",color:spray.color},
 {months:[7,8],task:"🌾 Harvest",check:harvest.status==="go"?"Open":"Closed",color:harvest.color},
-],
-};
+]};
 var currentCal=(calRecs[iFarm]||[]).filter(function(r){return r.months.includes(month);});
 var sectionSty={background:"rgba(255,255,255,0.02)",border:"1px solid rgba(100,180,80,0.25)",borderRadius:16,padding:"18px 16px",marginBottom:16};
 var tabs=[{id:"operations",label:"Operations"},{id:"conditions",label:"Field Conditions"},{id:"disease",label:"Disease & Pest"},{id:"planning",label:"7-Day Planning"},{id:"calendar",label:"Crop Calendar"}];
@@ -3011,7 +3010,7 @@ var sp=sprayWindow(d);
 var on=iDayIdx===i;
 return React.createElement('button', { key: i, onClick: function(){setDayIdx(i);}, style: {flex:"0 0 auto",padding:"6px 10px",borderRadius:10,border:"1px solid",borderColor:on?sp.color:"rgba(255,255,255,0.08)",background:on?"rgba(255,255,255,0.07)":"transparent",color:on?"#e8dcc8":"#666",fontSize:11,cursor:"pointer",minWidth:52,textAlign:"center"}}
 , React.createElement('div', { style: {fontSize:9,color:sp.color,marginBottom:2}}, "●")
-, React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2404}}, d.date.split(" ")[0])
+, React.createElement('div', {}, d.date.split(" ")[0])
 );
 })
 )
@@ -3021,29 +3020,29 @@ return React.createElement('button', { key: i, onClick: function(){setDayIdx(i);
 )
 /* ── Operations Tab ── */
 , iTab==="operations"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2414}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, day.date, " · "  , day.condition, " · "  , cvtT(day.temp), tUnit(), " · Wind "   , day.windMph, "mph · Rain "   , day.rainMm, "mm")
 /* Show relevant ops per farm type */
 , (iFarm==="arable"||iFarm==="mixed")&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2418}}
-, React.createElement(FarmOpCard, { icon: "💊", label: "Spray Window" , result: spray, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Wind: " , day.windMph, "mph (limit 13mph) · Temp: "     , cvtT(day.temp), tUnit(), " · Humidity: "   , day.humidity, "% · Rain: "   , day.rainMm, "mm", React.createElement('br', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2419}}), "Best time: "  , day.humidity<70&&day.windMph<8?"Morning or evening":"Check conditions carefully")})
+React.createElement('div', {}
+, React.createElement(FarmOpCard, { icon: "💊", label: "Spray Window" , result: spray, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Wind: " , day.windMph, "mph (limit 13mph) · Temp: "     , cvtT(day.temp), tUnit(), " · Humidity: "   , day.humidity, "% · Rain: "   , day.rainMm, "mm", React.createElement('br', {}), "Best time: "  , day.humidity<70&&day.windMph<8?"Morning or evening":"Check conditions carefully")})
 , React.createElement(FarmOpCard, { icon: "🌱", label: "Drilling / Seeding"  , result: drilling, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Soil temp (est.): "   , cvtT(soilT), tUnit(), " · Min for wheat: 5°C · Min for OSR: 8°C · Field moisture: "              , day.rainMm>=5?"Wet":"Likely suitable")})
-, React.createElement(FarmOpCard, { icon: "🌾", label: "Harvest Window" , result: harvest, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Humidity: " , day.humidity, "% (target under 70%) · Rain: "      , day.rain, "% chance · Wind: "    , day.windMph, "mph", React.createElement('br', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2421}}), "Grain moisture risk: "   , day.humidity>=80?"High":"Low")})
+, React.createElement(FarmOpCard, { icon: "🌾", label: "Harvest Window" , result: harvest, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Humidity: " , day.humidity, "% (target under 70%) · Rain: "      , day.rain, "% chance · Wind: "    , day.windMph, "mph", React.createElement('br', {}), "Grain moisture risk: "   , day.humidity>=80?"High":"Low")})
 )
 )
 , (iFarm==="livestock"||iFarm==="mixed")&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2425}}
-, React.createElement(FarmOpCard, { icon: "🐄", label: "Grazing Conditions" , result: grazing, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Rain: " , day.rainMm, "mm · Temp: "   , cvtT(day.temp), tUnit(), " · Wind: "   , day.windMph, "mph", React.createElement('br', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2426}}), "Poaching risk: "  , day.rainMm>=6?"High":day.rainMm>=3?"Moderate":"Low", " · Welfare risk: "    , day.windMph>=35||day.temp<=-3?"Yes":"Low")})
+React.createElement('div', {}
+, React.createElement(FarmOpCard, { icon: "🐄", label: "Grazing Conditions" , result: grazing, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Rain: " , day.rainMm, "mm · Temp: "   , cvtT(day.temp), tUnit(), " · Wind: "   , day.windMph, "mph", React.createElement('br', {}), "Poaching risk: "  , day.rainMm>=6?"High":day.rainMm>=3?"Moderate":"Low", " · Welfare risk: "    , day.windMph>=35||day.temp<=-3?"Yes":"Low")})
 , React.createElement(FarmOpCard, { icon: "🏠", label: "Housing / Shelter"  , result: {status:day.temp<2||day.windMph>40?"caution":"go",color:day.temp<2||day.windMph>40?"#ffcc00":"#44cc66",reason:day.temp<2?"Cold — check housing ventilation and bedding":day.windMph>40?"High winds — check building integrity":"Housing conditions satisfactory"}, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Temp: " , cvtT(day.temp), tUnit(), " · Wind chill factor active: "      , day.windMph>20&&day.temp<8?"Yes":"No", " · Check feed and water supply"      )})
 )
 )
 , (iFarm==="horticulture"||iFarm==="mixed")&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2431}}
+React.createElement('div', {}
 , React.createElement(FarmOpCard, { icon: "🌱", label: "Planting Window" , result: {status:soilT>=8&&day.rainMm<6?"go":soilT>=5?"caution":"stop",color:soilT>=8&&day.rainMm<6?"#44cc66":soilT>=5?"#ffcc00":"#ff2200",reason:soilT>=8&&day.rainMm<6?"Good planting conditions":soilT<5?"Soil too cold for most transplants":"Check soil moisture before planting"}, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Soil temp: "  , cvtT(soilT), tUnit(), " · Min for most veg: 8°C · Rain: "         , day.rainMm, "mm · Frost risk tonight: "     , day.low<=1?"Yes — protect transplants":"Low")})
-, React.createElement(FarmOpCard, { icon: "💧", label: "Irrigation", result: {status:irrNeed.level==="None"?"go":irrNeed.level==="Low"?"caution":irrNeed.level==="Moderate"?"delay":"stop",color:irrNeed.color,reason:irrNeed.desc}, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "ET₀: " , et0, "mm · Rainfall: "   , day.rainMm, "mm · Deficit: "   , Math.max(0,et0-day.rainMm).toFixed(1), "mm", React.createElement('br', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2433}}), "Suggested application: "  , irrNeed.mm>0?irrNeed.mm+"mm":"None required")})
+, React.createElement(FarmOpCard, { icon: "💧", label: "Irrigation", result: {status:irrNeed.level==="None"?"go":irrNeed.level==="Low"?"caution":irrNeed.level==="Moderate"?"delay":"stop",color:irrNeed.color,reason:irrNeed.desc}, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "ET₀: " , et0, "mm · Rainfall: "   , day.rainMm, "mm · Deficit: "   , Math.max(0,et0-day.rainMm).toFixed(1), "mm", React.createElement('br', {}), "Suggested application: "  , irrNeed.mm>0?irrNeed.mm+"mm":"None required")})
 )
 )
-, React.createElement(FarmOpCard, { icon: "🚜", label: "Field Traffic / Access"   , result: field, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Rain: " , day.rainMm, "mm · Ground state: "    , day.rainMm>=10?"Saturated":day.rainMm>=4?"Wet":"Likely trafficable", React.createElement('br', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2436}}), "Compaction risk: "  , day.rainMm>=8?"High":day.rainMm>=4?"Moderate":"Low")})
+, React.createElement(FarmOpCard, { icon: "🚜", label: "Field Traffic / Access"   , result: field, detail: React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.7}}, "Rain: " , day.rainMm, "mm · Ground state: "    , day.rainMm>=10?"Saturated":day.rainMm>=4?"Wet":"Likely trafficable", React.createElement('br', {}), "Compaction risk: "  , day.rainMm>=8?"High":day.rainMm>=4?"Moderate":"Low")})
 , React.createElement('div', { style: {fontSize:10,color:"#444",marginTop:8,lineHeight:1.6,padding:"8px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8}}, "⚠️ Advisory only. Soil conditions vary by field, soil type and drainage. Consult your agronomist and check AHDB recommendations for your crops."
 
 )
@@ -3051,7 +3050,7 @@ React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lin
 )
 /* ── Field Conditions Tab ── */
 , iTab==="conditions"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2444}}
+React.createElement('div', {}
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}
 , React.createElement(FarmMetricCard, { icon: "🌡️", label: "SOIL TEMP (EST.)"  , value: cvtT(soilT), unit: tUnit(),
 color: soilT<3?"#88ccff":soilT<5?"#ffaa00":soilT>=8?"#44cc66":"#aaddaa",
@@ -3102,13 +3101,13 @@ return React.createElement('div', { key: i, title: g.date+": "+g.gdd+"GDD (total
 })
 )
 , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",fontSize:9,color:"#444"}}
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2495}}, "Day 1" ), React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2495}}, "Day 7" ), React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2495}}, "Day 14" )
+, React.createElement('span', {}, "Day 1" ), React.createElement('span', {}, "Day 7" ), React.createElement('span', {}, "Day 14" )
 )
 )
 )
 /* ── Disease & Pest Tab ── */
 , iTab==="disease"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2501}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Disease risk assessment for "    , day.date, " — based on temperature and humidity thresholds"       )
 /* Blight */
 , React.createElement('div', { style: {padding:"12px 14px",borderRadius:12,border:"1px solid "+blight.color+"44",borderLeft:"3px solid "+blight.color,background:blight.color+"0a",marginBottom:8}}
@@ -3141,7 +3140,7 @@ var color=d.risk?"#ff8800":d.warn?"#ffcc00":"#44cc66";
 var level=d.risk?"High risk":d.warn?"Watch":"Low risk";
 return React.createElement('div', { key: i, style: {padding:"10px 14px",borderRadius:12,border:"1px solid "+color+"33",borderLeft:"2px solid "+color,marginBottom:6,background:"rgba(255,255,255,0.02)"}}
 , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:8,marginBottom:3}}
-, React.createElement('span', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2534}}, d.icon)
+, React.createElement('span', {}, d.icon)
 , React.createElement('div', { style: {flex:1,fontSize:11,color:"#e8dcc8"}}, d.name)
 , React.createElement('span', { style: {fontSize:10,color:color}}, level)
 )
@@ -3155,7 +3154,7 @@ return React.createElement('div', { key: i, style: {padding:"10px 14px",borderRa
 )
 /* ── 7-Day Planning Tab ── */
 , iTab==="planning"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2548}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Tap a day to view full operations detail"       )
 , days.slice(0,7).map(function(d,i){
 var sp=sprayWindow(d);
@@ -3188,7 +3187,7 @@ style: {display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadi
 )
 /* ── Crop Calendar Tab ── */
 , iTab==="calendar"&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2581}}
+React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Seasonal recommendations for "
    , (FARM_TYPES.find(function(f){return f.id===iFarm;})||{label:iFarm}).label, " — "  , new Date().toLocaleString("en-GB",{month:"long",year:"numeric"})
 )
@@ -3437,7 +3436,7 @@ style: {width:"100%",padding:"10px 12px",borderRadius:12,border:"1px solid rgba(
 , iErr&&React.createElement('div', { style: {color:"#ff6666",fontSize:12,marginBottom:12,textAlign:"center"}}, iErr)
 , iFd.length===0&&!iErr&&React.createElement('div', { style: {textAlign:"center",padding:"80px 20px",color:"#555"}}, React.createElement('div', { style: {fontSize:40,marginBottom:16}}, "🌍"), React.createElement('div', { style: {fontSize:14,color:"#666"}}, "Detecting your location…"  ))
 , iFd.length>0&&(
-React.createElement('div', {__self: this, __source: {fileName: _jsxFileName, lineNumber: 2828}}
+React.createElement('div', {}
 , React.createElement('div', { style: {textAlign:"center",marginBottom:24}}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:6,color:"#ff7700",textTransform:"uppercase",marginBottom:8}}, "Forecast — "  , iLn)
 , React.createElement('h1', { style: {fontSize:"clamp(18px,4vw,34px)",fontWeight:"normal",margin:"0 0 4px",color:"#fff",lineHeight:1.1}}, iDr)
