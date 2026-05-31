@@ -321,17 +321,6 @@ function cinColour(v){ var a=Math.abs(v); return a>=200?"#ff1500":a>=100?"#ff660
 function liColour(v){ return v<=-8?"#ff1500":v<=-6?"#ff4400":v<=-4?"#ff8800":v<=-2?"#ffcc00":v<=0?"#aacc44":"#4a9fd4"; }
 function hColour(v){ return v>=450?"#ff1500":v>=300?"#ff6600":v>=150?"#ffaa00":v>0?"#ffdd88":"#4a9fd4"; }
 
-function MeteoGauge(props){
-  var label=props.label, value=props.value, unit=props.unit, color=props.color, desc=props.desc, sub=props.sub;
-  return (
-    <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 12px",borderLeft:"3px solid "+color}}>
-      <div style={{fontSize:10,color:"#666",letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>{label}</div>
-      <div style={{fontSize:22,fontWeight:"bold",color:color,marginBottom:2}}>{value}<span style={{fontSize:12,color:"#888",marginLeft:3}}>{unit}</span></div>
-      {sub&&<div style={{fontSize:11,color:color,marginBottom:2}}>{sub}</div>}
-      {desc&&<div style={{fontSize:10,color:"#666",lineHeight:1.5}}>{desc}</div>}
-    </div>
-  );
-}
 
 // ── Construction Dashboard ────────────────────────────────────────────────────
 var CONSTRUCTION_ACTIVITIES = [
@@ -619,6 +608,18 @@ function drillingWindow(soilT, d){
 
 </script>
 <script type="text/babel" data-presets="react">
+
+function MeteoGauge(props){
+  var label=props.label, value=props.value, unit=props.unit, color=props.color, desc=props.desc, sub=props.sub;
+  return (
+    <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 12px",borderLeft:"3px solid "+color}}>
+      <div style={{fontSize:10,color:"#666",letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>{label}</div>
+      <div style={{fontSize:22,fontWeight:"bold",color:color,marginBottom:2}}>{value}<span style={{fontSize:12,color:"#888",marginLeft:3}}>{unit}</span></div>
+      {sub&&<div style={{fontSize:11,color:color,marginBottom:2}}>{sub}</div>}
+      {desc&&<div style={{fontSize:10,color:"#666",lineHeight:1.5}}>{desc}</div>}
+    </div>
+  );
+}
 function SettingsPanel(props){
 var units=props.units,setUnits=props.setUnits,onClose=props.onClose;
 var row={display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,0.06)"};
