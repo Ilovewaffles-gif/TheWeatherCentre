@@ -608,7 +608,6 @@ function drillingWindow(soilT, d){
 
 </script>
 <script type="text/babel" data-presets="react">
-
 function MeteoGauge(props){
   var label=props.label, value=props.value, unit=props.unit, color=props.color, desc=props.desc, sub=props.sub;
   return (
@@ -1283,6 +1282,8 @@ return <div key={i} style={{background:"rgba(255,255,255,0.03)",border:"1px soli
 </div>
 );
 }
+</script>
+<script type="text/babel" data-presets="react">
 function WeatherExtremes(props){
 var forecastData=props.forecastData,locationName=props.locationName,u=props.u;
 var lr=useState([]);var iLr=lr[0];var setLr=lr[1];
@@ -2062,6 +2063,8 @@ ctx.fillStyle="#ccc";ctx.fillText("Dewpoint",ML+92,H-MB+8);
 },[levels]);
 return <canvas ref={canvasRef} width={W} height={H} style={{borderRadius:10,maxWidth:"100%",display:"block"}}/>;
 }
+</script>
+<script type="text/babel" data-presets="react">
 function VerticalTable(props){
 var levels=props.levels,u=props.u||{temp:"C"};
 function cvtT(c){ return u.temp==="F"?+(c*9/5+32).toFixed(1):+c.toFixed(1); }
@@ -2890,6 +2893,8 @@ return <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8
 </div>
 );
 }
+</script>
+<script type="text/babel" data-presets="react">
 function FarmOpCard(props){
 var icon=props.icon, label=props.label, result=props.result, detail=props.detail;
 var open=useState(false);var iOpen=open[0];var setOpen=open[1];
@@ -3458,5 +3463,6 @@ Alerts{alertCount>0&&<span style={{marginLeft:5,background:"#ff4400",color:"#fff
 }
 ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App,null));
 </script>
+
 </body>
 </html>
