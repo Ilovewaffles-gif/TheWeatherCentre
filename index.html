@@ -3215,9 +3215,9 @@ return React.createElement('div', { key: i, style: {padding:"12px 14px",borderRa
 , React.createElement('div', { style: {fontSize:11,color:"#9a8c7a"}}, "Harvest days: "  , React.createElement('span', { style: {color:"#ffcc44",fontWeight:"bold"}}, days.slice(0,14).filter(function(d){return harvestWindow(d).status==="go";}).length))
 , React.createElement('div', { style: {fontSize:11,color:"#9a8c7a"}}, "Rain days: "  , React.createElement('span', { style: {color:"#4a9fd4",fontWeight:"bold"}}, days.slice(0,14).filter(function(d){return d.rainMm>=2;}).length))
 )
-
 )
-                      
+)
+  
 function App(){
 var fd=useState([]);var iFd=fd[0];var setFd=fd[1];
 var hr=useState(null);var iHr=hr[0];var setHr=hr[1];
