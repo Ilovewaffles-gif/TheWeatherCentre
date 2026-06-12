@@ -2321,6 +2321,425 @@ React.createElement('div', {style:sectionSty}
 )
 );
 }
+// ── Hiking & Outdoors Dashboard ───────────────────────────────────────────────
+
+var TRAIL_TYPES = [
+  {id:"lowland",  icon:"🌿", label:"Lowland / Easy",   maxWindMph:40, desc:"Paths, parks, gentle terrain"},
+  {id:"hill",     icon:"⛰️", label:"Hill Walking",      maxWindMph:35, desc:"Moderate elevation, exposed ridges"},
+  {id:"mountain", icon:"🏔️", label:"Mountain / Fell",   maxWindMph:28, desc:"High ground, technical terrain"},
+  {id:"camping",  icon:"⛺", label:"Wild Camping",       maxWindMph:35, desc:"Overnight backcountry camping"},
+];
+
+// Feels-like at altitude using standard lapse rate (~0.65°C per 100m)
+function altTemp(airTemp, altM) {
+  return +(airTemp - (altM / 100) * 0.65).toFixed(1);
+}
+
+// Wind at altitude increases roughly with height (simple estimate)
+function altWind(windMph, altM) {
+  return Math.round(windMph * (1 + altM / 5000));
+}
+
+// Lightning risk window
+function lightningRiskHike(d) {
+  var risk = d.condition.includes("⛈") || (d.temp >= 22 && d.humidity >= 65 && d.rain >= 50);
+  var moderate = d.temp >= 18 && d.humidity >= 60 && d.rain >= 35;
+  if (risk)     return {level:"High",     color:"#ff2200", desc:"Thunderstorm conditions — avoid summits, ridges, lone trees"};
+  if (moderate) return {level:"Moderate", color:"#ff8800", desc:"Convective conditions developing — watch sky, have escape route"};
+  return              {level:"Low",       color:"#44cc66", desc:"No significant lightning risk"};
+}
+
+// Exposure / hypothermia risk from wind chill + wet
+function hypothermiaRisk(tempC, windMph, rainMm) {
+  var wc = tempC <= 10 ? tempC - (windMph * 0.08) : tempC;
+  var wetFactor = rainMm >= 5 ? -4 : rainMm >= 1 ? -2 : 0;
+  var effective = wc + wetFactor;
+  if (effective <= -10) return {level:"Severe",   color:"#ff0000", desc:"Severe hypothermia risk — waterproofs and insulation essential, consider postponing"};
+  if (effective <= -2)  return {level:"High",     color:"#ff4400", desc:"High risk — full waterproofs, windproof layers, hat and gloves required"};
+  if (effective <= 5)   return {level:"Moderate", color:"#ff8800", desc:"Cool and exposed — layers needed, avoid cotton"};
+  if (effective <= 10)  return {level:"Low",      color:"#ffcc00", desc:"Cool — light layers and wind-shell recommended"};
+  return                       {level:"Minimal",  color:"#44cc66", desc:"Comfortable walking temperature"};
+}
+
+// Trail surface condition
+function trailCondition(rainMm, rain3day, tempC, low) {
+  var total = rainMm + (rain3day || 0);
+  var frost  = low <= 0;
+  if (frost && tempC <= 0) return {status:"Icy",      color:"#88ccff", icon:"🧊", desc:"Ice likely on path surfaces — crampons/traction aids essential"};
+  if (total >= 20)         return {status:"Boggy",    color:"#ff4400", icon:"💦", desc:"Waterlogged — very muddy, stream crossings may be dangerous"};
+  if (total >= 10)         return {status:"Muddy",    color:"#ff8800", icon:"🌧️",desc:"Significant mud — waterproof boots essential"};
+  if (total >= 4)          return {status:"Wet",      color:"#ffcc00", icon:"💧", desc:"Wet trails — good grip footwear recommended"};
+  if (frost && tempC > 0)  return {status:"Soft",     color:"#ffdd88", icon:"🌤️",desc:"Ground soft from overnight frost — may be slippery on slopes"};
+  return                          {status:"Good",     color:"#44cc66", icon:"✅", desc:"Dry, firm trail surface — good walking conditions"};
+}
+
+// Visibility / navigation risk
+function navVisibility(d) {
+  if (d.condition.includes("🌫") || d.humidity >= 96)
+    return {level:"Mist/Fog", color:"#ff4400", desc:"Navigation by compass/GPS essential — do not rely on landmarks"};
+  if (d.rain >= 60 && d.windMph >= 20)
+    return {level:"Poor",     color:"#ff8800", desc:"Reduced visibility in rain and wind — map and compass required"};
+  if (d.humidity >= 85 || d.rain >= 40)
+    return {level:"Moderate", color:"#ffcc00", desc:"Low cloud likely on high ground — stay on marked paths"};
+  return   {level:"Good",     color:"#44cc66", desc:"Good visibility — clear walking conditions"};
+}
+
+// Sunrise / sunset (simple approximation)
+function sunTimes(lat, dayOfYear) {
+  var P = Math.asin(0.39795 * Math.cos(0.2163108 + 2 * Math.atan(0.9671396 * Math.tan(0.00860 * (dayOfYear - 186)))));
+  var D = 24 - (24 / Math.PI) * Math.acos((Math.sin(0.8333 * Math.PI / 180) + Math.sin(lat * Math.PI / 180) * Math.sin(P)) / (Math.cos(lat * Math.PI / 180) * Math.cos(P)));
+  var rise = 12 - D / 2;
+  var set  = 12 + D / 2;
+  function fmt(h) { var hh = Math.floor(h), mm = Math.round((h - hh) * 60); if (mm >= 60){hh++;mm=0;} return String(hh).padStart(2,"0")+":"+String(mm).padStart(2,"0"); }
+  return { rise: fmt(rise), set: fmt(set), daylight: D.toFixed(1) };
+}
+
+// Overall hiking go/no-go for a trail type
+function hikingGoNo(trailType, d, altM) {
+  var sp = TRAIL_TYPES.find(function(t){return t.id===trailType;})||TRAIL_TYPES[0];
+  var windAtAlt = altWind(d.windMph, altM);
+  var gustAtAlt = altWind(d.gustMph, altM);
+  var tempAtAlt = altTemp(d.temp, altM);
+  var lr = lightningRiskHike(d);
+  if (lr.level === "High")
+    return {status:"stop",   color:"#ff2200", reason:"Lightning risk — avoid exposed ridges and summits"};
+  if (gustAtAlt >= sp.maxWindMph + 10)
+    return {status:"stop",   color:"#ff2200", reason:"Gusts "+gustAtAlt+"mph at altitude — dangerous on exposed ground"};
+  if (windAtAlt >= sp.maxWindMph)
+    return {status:"stop",   color:"#ff2200", reason:"Wind "+windAtAlt+"mph at altitude — exceeds safe limit for "+sp.label};
+  if (gustAtAlt >= sp.maxWindMph)
+    return {status:"delay",  color:"#ff8800", reason:"Gusts approaching limit — avoid ridges, plan sheltered route"};
+  if (d.condition.includes("🌫") && (trailType==="mountain"||trailType==="hill"))
+    return {status:"delay",  color:"#ff8800", reason:"Fog on high ground — navigation by map and compass only"};
+  if (tempAtAlt <= -5)
+    return {status:"delay",  color:"#ff8800", reason:"Temperature "+tempAtAlt+"°C at altitude — full winter kit required"};
+  if (d.rainMm >= 10)
+    return {status:"caution",color:"#ffcc00", reason:"Heavy rain — waterproofs essential, check stream levels"};
+  if (windAtAlt >= sp.maxWindMph * 0.75)
+    return {status:"caution",color:"#ffcc00", reason:"Strong wind at altitude — head cover, windproof layers required"};
+  if (lr.level === "Moderate")
+    return {status:"caution",color:"#ffcc00", reason:"Convective risk — watch for building cloud, have escape route"};
+  return   {status:"go",     color:"#44cc66", reason:"Conditions suitable for "+sp.label};
+}
+
+// Drinking water need estimate (ml/hr) based on temp and exertion
+function hydrationNeed(tempC, windMph) {
+  var base = 500;
+  if (tempC >= 25) base += 250;
+  else if (tempC >= 18) base += 100;
+  if (windMph >= 20) base -= 50; // less sweat in wind
+  return base;
+}
+
+// Pack weight recommendation note
+function packNote(d, trailType, nights) {
+  var notes = [];
+  if (d.rainMm >= 2 || d.rain >= 40)  notes.push("Pack cover + waterproofs");
+  if (d.temp <= 5 || d.low <= 2)       notes.push("Extra insulation layer");
+  if (d.uvMax >= 6)                     notes.push("Sun hat + SPF50");
+  if (trailType === "camping")          notes.push("Insulated sleeping mat");
+  if (nights > 0)                       notes.push("Headtorch + spare batteries");
+  if (d.windMph >= 20)                  notes.push("Windproof outer shell");
+  return notes;
+}
+
+function HikingDashboard(props) {
+  var lat=props.lat, lon=props.lon, locationName=props.locationName, forecastData=props.forecastData, u=props.u||{temp:"C",speed:"mph"};
+  var trailType = useState("hill");       var iTrail=trailType[0];    var setTrail=trailType[1];
+  var dayIdx    = useState(0);            var iDayIdx=dayIdx[0];      var setDayIdx=dayIdx[1];
+  var tab       = useState("summary");    var iTab=tab[0];            var setTab=tab[1];
+  var altM      = useState(400);          var iAltM=altM[0];          var setAltM=altM[1];
+  var nights    = useState(0);            var iNights=nights[0];      var setNights=nights[1];
+
+  function cvtT(c){return u.temp==="F"?+(c*9/5+32).toFixed(1):+c;}
+  function tUnit(){return u.temp==="F"?"°F":"°C";}
+
+  var days = forecastData||[];
+  if(!days.length) return null;
+  var day = days[Math.min(iDayIdx, days.length-1)];
+
+  var tempAlt  = altTemp(day.temp, iAltM);
+  var windAlt  = altWind(day.windMph, iAltM);
+  var gustAlt  = altWind(day.gustMph, iAltM);
+  var lr       = lightningRiskHike(day);
+  var hypo     = hypothermiaRisk(day.temp, day.windMph, day.rainMm);
+  var rain3day = days.slice(iDayIdx, iDayIdx+3).reduce(function(a,d){return a+d.rainMm;},0) - day.rainMm;
+  var trail    = trailCondition(day.rainMm, rain3day, day.temp, day.low);
+  var nav      = navVisibility(day);
+  var goNo     = hikingGoNo(iTrail, day, iAltM);
+  var dayOfYear= Math.round((new Date() - new Date(new Date().getFullYear(),0,0)) / 86400000) + iDayIdx;
+  var sun      = sunTimes(lat, dayOfYear);
+  var hydration= hydrationNeed(day.temp, day.windMph);
+  var packNotes= packNote(day, iTrail, iNights);
+  var sp       = TRAIL_TYPES.find(function(t){return t.id===iTrail;})||TRAIL_TYPES[0];
+
+  var sectionSty={background:"rgba(255,255,255,0.02)",border:"1px solid rgba(100,200,120,0.25)",borderRadius:16,padding:"18px 16px",marginBottom:16};
+  var tabs=[{id:"summary",label:"Summary"},{id:"conditions",label:"Trail Conditions"},{id:"safety",label:"Safety"},{id:"planning",label:"7-Day"},{id:"kit",label:"Kit Planner"}];
+
+  return (
+    React.createElement('div', {style:sectionSty}
+    , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}
+      , React.createElement('span', {style:{fontSize:20}}, "🏕️")
+      , React.createElement('div', {style:{flex:1}}, React.createElement('div', {style:{fontSize:13,color:"#aaddbb",letterSpacing:2,textTransform:"uppercase"}}, "Hiking & Outdoors"), React.createElement('div', {style:{fontSize:10,color:"#555",marginTop:1}}, locationName))
+      , React.createElement('div', {style:{padding:"4px 12px",borderRadius:12,background:goNo.color+"18",border:"1px solid "+goNo.color+"44",fontSize:11,color:goNo.color,fontWeight:"bold"}}, goNo.status.toUpperCase())
+    )
+
+    , React.createElement('div', {style:{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}},
+      TRAIL_TYPES.map(function(t){var on=iTrail===t.id;return React.createElement('button', {key:t.id,onClick:function(){setTrail(t.id);},style:{padding:"5px 10px",borderRadius:10,border:"1px solid",borderColor:on?"#88cc99":"rgba(255,255,255,0.1)",background:on?"rgba(100,200,120,0.15)":"rgba(255,255,255,0.03)",color:on?"#aaddbb":"#666",fontSize:11,cursor:"pointer"}}, t.icon+" "+t.label);})
+    )
+
+    , React.createElement('div', {style:{display:"flex",gap:8,alignItems:"center",marginBottom:10,fontSize:11,color:"#666"}},
+      "Summit altitude (m):",
+      React.createElement('input', {type:"range",min:0,max:1400,step:50,value:iAltM,onChange:function(ev){setAltM(parseInt(ev.target.value));},style:{flex:1,accentColor:"#88cc99"}}),
+      React.createElement('span', {style:{color:"#aaddbb",minWidth:50}}, iAltM+"m")
+    )
+
+    , React.createElement('div', {style:{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:4}},
+      days.slice(0,7).map(function(d,i){
+        var gn=hikingGoNo(iTrail,d,iAltM);
+        var on=iDayIdx===i;
+        return React.createElement('button', {key:i,onClick:function(){setDayIdx(i);},style:{flex:"0 0 auto",padding:"6px 10px",borderRadius:10,border:"1px solid",borderColor:on?gn.color:"rgba(255,255,255,0.08)",background:on?"rgba(255,255,255,0.07)":"transparent",color:on?"#e8dcc8":"#666",fontSize:11,cursor:"pointer",minWidth:52,textAlign:"center"}},
+          React.createElement('div', {style:{fontSize:9,color:gn.color,marginBottom:2}}, "●"),
+          React.createElement('div', null, d.date.split(" ")[0])
+        );
+      })
+    )
+
+    , React.createElement('div', {style:{display:"flex",gap:0,borderBottom:"1px solid rgba(255,255,255,0.07)",marginBottom:14,overflowX:"auto"}},
+      tabs.map(function(t){var on=iTab===t.id;return React.createElement('button', {key:t.id,onClick:function(){setTab(t.id);},style:{padding:"7px 12px",background:"none",border:"none",borderBottom:on?"2px solid #88cc99":"2px solid transparent",color:on?"#aaddbb":"#555",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}, t.label);})
+    )
+
+    , iTab==="summary" && React.createElement('div', null
+      , React.createElement('div', {style:{background:goNo.color+"18",border:"1px solid "+goNo.color+"44",borderRadius:12,padding:"12px 14px",marginBottom:12}}
+        , React.createElement('div', {style:{fontSize:13,color:goNo.color,fontWeight:"bold",marginBottom:4}}, sp.icon+" "+sp.label+": "+goNo.reason)
+        , React.createElement('div', {style:{fontSize:11,color:"#9a8c7a"}}, sp.desc)
+      )
+      , React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}},
+        [
+          {icon:"🌡️", label:"Temp at Altitude",  val:cvtT(tempAlt)+tUnit(),  color:tempAlt<0?"#88ccff":tempAlt<=8?"#aaddff":tempAlt>=28?"#ff8844":"#e8dcc8", sub:"Surface: "+cvtT(day.temp)+tUnit()+" · "+iAltM+"m alt"},
+          {icon:"💨", label:"Wind at Altitude",   val:windAlt+"mph",           color:windAlt>=sp.maxWindMph?"#ff2200":windAlt>=sp.maxWindMph*0.75?"#ff8800":"#aaddff", sub:"Gusts: "+gustAlt+"mph · Surface: "+day.windMph+"mph"},
+          {icon:"🌧️", label:"Rain",               val:day.rainMm+"mm",         color:day.rainMm>=10?"#ff8800":day.rainMm>=3?"#ffcc00":"#44cc66",  sub:day.rain+"% chance"},
+          {icon:trail.icon, label:"Trail Surface",val:trail.status,            color:trail.color,  sub:trail.desc},
+          {icon:"⚡", label:"Lightning Risk",     val:lr.level,                color:lr.color,     sub:lr.desc},
+          {icon:"👁️", label:"Visibility",         val:nav.level,               color:nav.color,    sub:nav.desc},
+          {icon:"🌅", label:"Sunrise",            val:sun.rise,                color:"#ffcc44",    sub:"Sunset: "+sun.set},
+          {icon:"☀️", label:"Daylight",           val:sun.daylight+" hrs",     color:"#ffdd88",    sub:parseFloat(sun.daylight)<10?"Short day — plan turnaround time":"Good daylight window"},
+        ].map(function(c,i){
+          return React.createElement('div', {key:i,style:{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 11px",border:"1px solid rgba(255,255,255,0.06)"}},
+            React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:3}}, c.icon+" "+c.label),
+            React.createElement('div', {style:{fontSize:13,color:c.color,fontWeight:"bold"}}, c.val),
+            React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:1}}, c.sub)
+          );
+        })
+      )
+      , React.createElement('div', {style:{padding:"10px 12px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",fontSize:11,color:"#9a8c7a",lineHeight:1.7}},
+        "💧 Estimated fluid need: ",
+        React.createElement('span', {style:{color:"#4a9fd4",fontWeight:"bold"}}, hydration+"ml/hr"),
+        " · Carry at least ",
+        React.createElement('span', {style:{color:"#4a9fd4",fontWeight:"bold"}}, Math.round(hydration*6/1000*10)/10+"L"),
+        " for a 6-hour walk"
+      )
+    )
+
+    , iTab==="conditions" && React.createElement('div', null
+      , React.createElement('div', {style:{background:trail.color+"12",border:"1px solid "+trail.color+"44",borderRadius:12,padding:"12px 14px",marginBottom:12}},
+        React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10}},
+          React.createElement('span', {style:{fontSize:28}}, trail.icon),
+          React.createElement('div', null,
+            React.createElement('div', {style:{fontSize:14,color:trail.color,fontWeight:"bold"}}, "Trail Surface: "+trail.status),
+            React.createElement('div', {style:{fontSize:11,color:"#9a8c7a",marginTop:2}}, trail.desc)
+          )
+        )
+      )
+      , React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}},
+        React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(255,255,255,0.07)"}},
+          React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}, "🌡️ TEMPERATURE PROFILE"),
+          React.createElement('div', {style:{fontSize:18,color:"#e8dcc8",fontWeight:"bold"}}, cvtT(day.temp)+tUnit(), React.createElement('span', {style:{fontSize:11,color:"#888",marginLeft:4}}, "surface")),
+          React.createElement('div', {style:{fontSize:14,color:"#aaddff",marginTop:4}}, cvtT(tempAlt)+tUnit(), React.createElement('span', {style:{fontSize:10,color:"#666",marginLeft:4}}, "at "+iAltM+"m")),
+          React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:4}}, "Lapse rate: ~0.65°C per 100m")
+        ),
+        React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(255,255,255,0.07)"}},
+          React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}, "💨 WIND PROFILE"),
+          React.createElement('div', {style:{fontSize:18,color:"#aaaaff",fontWeight:"bold"}}, day.windMph+"mph", React.createElement('span', {style:{fontSize:11,color:"#888",marginLeft:4}}, "surface")),
+          React.createElement('div', {style:{fontSize:14,color:windAlt>=sp.maxWindMph?"#ff4400":"#88aaff",marginTop:4}}, windAlt+"mph", React.createElement('span', {style:{fontSize:10,color:"#666",marginLeft:4}}, "at "+iAltM+"m")),
+          React.createElement('div', {style:{fontSize:10,color:windAlt>=sp.maxWindMph?"#ff4400":"#666",marginTop:4}}, windAlt>=sp.maxWindMph?"⛔ Exceeds limit for "+sp.label:"Gusts to "+gustAlt+"mph at altitude")
+        ),
+        React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(255,255,255,0.07)"}},
+          React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}, "💧 GROUND MOISTURE"),
+          React.createElement('div', {style:{fontSize:16,color:trail.color,fontWeight:"bold"}}, trail.status),
+          React.createElement('div', {style:{fontSize:10,color:"#888",marginTop:2}}, "Today: "+day.rainMm+"mm · Prior 3-day est.: "+rain3day.toFixed(1)+"mm"),
+          React.createElement('div', {style:{fontSize:10,color:trail.color,marginTop:4}}, trail.desc)
+        ),
+        React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(255,255,255,0.07)"}},
+          React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}, "👁️ NAVIGATION / VIS"),
+          React.createElement('div', {style:{fontSize:16,color:nav.color,fontWeight:"bold"}}, nav.level),
+          React.createElement('div', {style:{fontSize:10,color:"#888",marginTop:2}}, "Humidity: "+day.humidity+"% · "+day.condition),
+          React.createElement('div', {style:{fontSize:10,color:nav.color,marginTop:4}}, nav.desc)
+        ),
+        React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(255,255,255,0.07)"}},
+          React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}, "🌅 DAYLIGHT"),
+          React.createElement('div', {style:{fontSize:16,color:"#ffcc44",fontWeight:"bold"}}, sun.rise+" → "+sun.set),
+          React.createElement('div', {style:{fontSize:10,color:"#888",marginTop:2}}, sun.daylight+" hours of daylight"),
+          React.createElement('div', {style:{fontSize:10,color:parseFloat(sun.daylight)<10?"#ff8800":"#44cc66",marginTop:4}}, parseFloat(sun.daylight)<10?"Short day — plan turnaround by "+(parseInt(sun.set.split(":")[0])-2)+":00":"Good daylight window — start before "+sun.rise+" for early start")
+        ),
+        React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid rgba(255,255,255,0.07)"}},
+          React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}, "🌫️ CLOUD / SUMMIT"),
+          React.createElement('div', {style:{fontSize:16,color:day.humidity>=90?"#ff8800":day.humidity>=75?"#ffcc00":"#44cc66",fontWeight:"bold"}}, day.humidity>=90?"Summit in cloud":day.humidity>=75?"Cloud likely on tops":"Clear summit likely"),
+          React.createElement('div', {style:{fontSize:10,color:"#888",marginTop:2}}, "Humidity: "+day.humidity+"% · "+day.condition),
+          React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:4}}, "Cloud base est: ~"+Math.max(0,Math.round((day.temp-day.low)*125))+"m (approx)")
+        )
+      )
+      , React.createElement('div', {style:{padding:"8px 12px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",fontSize:10,color:"#444",lineHeight:1.7}},
+        "⚠️ Trail conditions vary by aspect and ground type. North-facing and sheltered slopes retain moisture and frost longer. Check local walking reports and Mountain Weather Information Service (MWIS) for mountain days."
+      )
+    )
+
+    , iTab==="safety" && React.createElement('div', null
+      , React.createElement('div', {style:{padding:"14px",borderRadius:12,background:lr.color+"15",border:"1px solid "+lr.color+"44",marginBottom:10}},
+        React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,marginBottom:6}},
+          React.createElement('span', {style:{fontSize:24}}, "⚡"),
+          React.createElement('div', null,
+            React.createElement('div', {style:{fontSize:13,color:lr.color,fontWeight:"bold"}}, "Lightning Risk: "+lr.level),
+            React.createElement('div', {style:{fontSize:11,color:"#9a8c7a",marginTop:1}}, lr.desc)
+          )
+        ),
+        lr.level!=="Low" && React.createElement('div', {style:{fontSize:11,color:"#9a8c7a",lineHeight:1.7,marginTop:4}},
+          "If caught in a storm: descend immediately, avoid ridges and lone trees, crouch low in a dip away from hilltops, stay away from water. The 30-30 rule: if thunder follows lightning in under 30 seconds, seek shelter."
+        )
+      )
+      , React.createElement('div', {style:{padding:"14px",borderRadius:12,background:hypo.color+"15",border:"1px solid "+hypo.color+"44",marginBottom:10}},
+        React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,marginBottom:6}},
+          React.createElement('span', {style:{fontSize:24}}, "🥶"),
+          React.createElement('div', null,
+            React.createElement('div', {style:{fontSize:13,color:hypo.color,fontWeight:"bold"}}, "Hypothermia / Exposure Risk: "+hypo.level),
+            React.createElement('div', {style:{fontSize:11,color:"#9a8c7a",marginTop:1}}, hypo.desc)
+          )
+        ),
+        React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:10,color:"#666"}},
+          React.createElement('div', null, "Temp: "+cvtT(day.temp)+tUnit()),
+          React.createElement('div', null, "Wind: "+day.windMph+"mph"),
+          React.createElement('div', null, "Rain: "+day.rainMm+"mm")
+        )
+      )
+      , React.createElement('div', {style:{padding:"14px",borderRadius:12,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",marginBottom:10}},
+        React.createElement('div', {style:{fontSize:12,color:"#e8dcc8",fontWeight:"bold",marginBottom:8}}, "🗺️ Navigation Essentials"),
+        [
+          {icon:"📱", text:"Download offline map before you go (OS Maps, Viewranger, AllTrails)"},
+          {icon:"🧭", text:"Carry a physical map and compass — phone batteries die in cold"},
+          {icon:"📡", text:"Tell someone your planned route and expected return time"},
+          {icon:"🔦", text:iNights>0||parseFloat(sun.daylight)<10?"Carry headtorch — essential for this trip":"Headtorch recommended even on day walks"},
+          {icon:"🆘", text:"UK Mountain Rescue: 999 or 112, ask for Police then Mountain Rescue"},
+        ].map(function(item,i){
+          return React.createElement('div', {key:i,style:{display:"flex",gap:8,marginBottom:6,fontSize:11,color:"#9a8c7a"}},
+            React.createElement('span', null, item.icon),
+            React.createElement('span', null, item.text)
+          );
+        })
+      )
+      , React.createElement('div', {style:{padding:"14px",borderRadius:12,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)"}},
+        React.createElement('div', {style:{fontSize:12,color:"#e8dcc8",fontWeight:"bold",marginBottom:8}}, "🌤️ Weather Window Assessment"),
+        React.createElement('div', {style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}},
+          days.slice(0,7).map(function(d,i){
+            var gn=hikingGoNo(iTrail,d,iAltM);
+            return React.createElement('div', {key:i,style:{flex:"1 1 60px",textAlign:"center",padding:"8px 4px",borderRadius:8,background:gn.color+"12",border:"1px solid "+gn.color+"33"}},
+              React.createElement('div', {style:{fontSize:9,color:"#666",marginBottom:2}}, d.date.split(" ")[0]),
+              React.createElement('div', {style:{fontSize:14}}, d.condition),
+              React.createElement('div', {style:{fontSize:10,color:gn.color,fontWeight:"bold",marginTop:2}}, gn.status.toUpperCase())
+            );
+          })
+        ),
+        React.createElement('div', {style:{fontSize:10,color:"#444",lineHeight:1.6}}, "Best window: ", React.createElement('span', {style:{color:"#aaddbb"}}, (function(){var best=days.slice(0,7).find(function(d){return hikingGoNo(iTrail,d,iAltM).status==="go";});return best?best.date:"No clear window in next 7 days";})))
+      )
+    )
+
+    , iTab==="planning" && React.createElement('div', null
+      , React.createElement('div', {style:{fontSize:11,color:"#555",marginBottom:12}}, "7-day outlook · "+sp.icon+" "+sp.label+" · "+iAltM+"m summit altitude")
+      , days.slice(0,7).map(function(d,i){
+        var gn=hikingGoNo(iTrail,d,iAltM);
+        var dTrail=trailCondition(d.rainMm,0,d.temp,d.low);
+        var dLr=lightningRiskHike(d);
+        var dNav=navVisibility(d);
+        var dWind=altWind(d.windMph,iAltM);
+        var dTemp=altTemp(d.temp,iAltM);
+        return React.createElement('div', {key:i,
+          onClick:function(){setDayIdx(i);setTab("summary");},
+          style:{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,0.06)",marginBottom:6,background:iDayIdx===i?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.02)",cursor:"pointer"}},
+          React.createElement('div', {style:{width:3,height:50,borderRadius:2,background:gn.color,flexShrink:0}}),
+          React.createElement('div', {style:{flex:1}},
+            React.createElement('div', {style:{fontSize:12,color:"#e8dcc8"}}, d.date),
+            React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:1}}, d.condition+" · "+cvtT(d.temp)+tUnit()+" surface / "+cvtT(dTemp)+tUnit()+" at "+iAltM+"m · "+dWind+"mph wind"),
+            React.createElement('div', {style:{fontSize:10,color:"#555",marginTop:1}}, dTrail.icon+" "+dTrail.status+" · 👁️ "+dNav.level+(dLr.level!=="Low"?" · ⚡ "+dLr.level:""))
+          ),
+          React.createElement('div', {style:{textAlign:"right"}},
+            React.createElement('span', {style:{fontSize:11,padding:"2px 10px",borderRadius:12,border:"1px solid "+gn.color,color:gn.color,fontWeight:"bold"}}, gn.status.toUpperCase())
+          )
+        );
+      })
+    )
+
+    , iTab==="kit" && React.createElement('div', null
+      , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}},
+        React.createElement('span', {style:{fontSize:11,color:"#666"}},"Overnight nights:"),
+        React.createElement('input', {type:"range",min:0,max:4,step:1,value:iNights,onChange:function(ev){setNights(parseInt(ev.target.value));},style:{flex:1,accentColor:"#88cc99",maxWidth:140}}),
+        React.createElement('span', {style:{color:"#aaddbb",minWidth:40}}, iNights===0?"Day walk":iNights+"night"+(iNights>1?"s":""))
+      )
+      , packNotes.length>0 && React.createElement('div', {style:{padding:"10px 12px",borderRadius:10,background:"rgba(255,119,0,0.07)",border:"1px solid rgba(255,119,0,0.2)",marginBottom:12}},
+        React.createElement('div', {style:{fontSize:11,color:"#ff9944",marginBottom:6,fontWeight:"bold"}}, "⚠️ Weather-specific extras for "+day.date),
+        packNotes.map(function(n,i){return React.createElement('div', {key:i,style:{fontSize:11,color:"#e8dcc8",marginBottom:3}}, "• "+n);})
+      )
+      , [
+        {title:"The Ten Essentials", icon:"🎒", items:[
+          "Navigation (map + compass + GPS)",
+          "Sun protection (SPF50+, sunglasses, hat)",
+          "Insulation (extra layers for conditions)",
+          "Illumination (headtorch + spare batteries)",
+          "First-aid kit",
+          "Fire starter (matches/lighter in waterproof case)",
+          "Repair tools + knife",
+          "Nutrition (extra food beyond plan)",
+          "Hydration ("+Math.round(hydrationNeed(day.temp,day.windMph)*6/100)/10+"L+ for 6hr walk)",
+          "Emergency shelter (bivi bag / survival bag)",
+        ]},
+        iNights>0 ? {title:"Camping Essentials", icon:"⛺", items:[
+          "Tent / shelter suited to conditions",
+          "Sleeping bag (rated to "+Math.round(tempAlt-5)+"°C or lower)",
+          "Insulated sleeping mat",
+          "Camp stove + fuel + pots",
+          "Water filter or purification tablets",
+          "Bear/food bag or canister",
+          "Trowel (for cat holes)",
+          "Leave No Trace — pack out all waste",
+        ]} : null,
+        {title:"Clothing Layers (3-layer)", icon:"🧥", items:[
+          "Base layer: moisture-wicking (merino or synthetic)",
+          "Mid layer: fleece or down insulation",
+          "Outer layer: waterproof + windproof shell",
+          "Waterproof trousers",
+          "Walking boots (waterproof, ankle support for "+sp.label+")",
+          day.temp<=8||tempAlt<=5?"Warm hat and gloves — temps drop at altitude":"Light hat, consider gloves",
+          day.uvMax>=6?"Sun hat + SPF50 — significant UV today":"",
+        ].filter(Boolean)},
+      ].filter(Boolean).map(function(section,si){
+        return React.createElement('div', {key:si,style:{marginBottom:12}},
+          React.createElement('div', {style:{fontSize:11,color:"#aaddbb",fontWeight:"bold",marginBottom:8}}, section.icon+" "+section.title),
+          React.createElement('div', {style:{background:"rgba(255,255,255,0.02)",borderRadius:10,padding:"10px 12px",border:"1px solid rgba(255,255,255,0.06)"}},
+            section.items.map(function(item,i){
+              return React.createElement('div', {key:i,style:{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:i<section.items.length-1?"1px solid rgba(255,255,255,0.04)":"none"}},
+                React.createElement('span', {style:{color:"#44cc66",fontSize:12,flexShrink:0}}, "✓"),
+                React.createElement('span', {style:{fontSize:11,color:"#9a8c7a"}}, item)
+              );
+            })
+          )
+        );
+      })
+      , React.createElement('div', {style:{fontSize:10,color:"#444",marginTop:8,lineHeight:1.6,padding:"8px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8}},
+        "⚠️ This kit list is a guide based on today's forecast. Always adapt to your specific route, fitness level and local conditions. Check the Mountain Weather Information Service (mwis.org.uk) for mountain days."
+      )
+    )
+    )
+  );
+}
+
 function App(){
 var fd=useState([]);var iFd=fd[0];var setFd=fd[1];
 var hr=useState(null);var iHr=hr[0];var setHr=hr[1];
@@ -2475,6 +2894,7 @@ React.createElement('div', {}
 , iRoles.includes("farming")&&React.createElement(FarmingDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iRoles.includes("angling")&&React.createElement(AnglingDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iRoles.includes("ski")&&React.createElement(SkiDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
+, iRoles.includes("hiking")&&React.createElement(HikingDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iAp==="overview"&&React.createElement(WeatherOverview, {forecastData:iFd,locationName:iLn,u:u,hourlyRaw:iHr,lat:iLat,lon:iLon})
 , iAp==="ten"&&React.createElement(TenDayForecast, {forecastData:iFd,u:u})
 , iAp==="hourly"&&React.createElement(HourlyForecast, {forecastData:iFd,hourlyRaw:iHr,u:u})
