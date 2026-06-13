@@ -2748,6 +2748,520 @@ function HikingDashboard(props) {
   );
 }
 
+// ── Aviation Dashboard ────────────────────────────────────────────────────────
+
+var AIRCRAFT_TYPES = [
+  {id:"ppl",    icon:"🛩️", label:"Light Aircraft (PPL)", desc:"Single-engine, VFR/IFR"},
+  {id:"glider", icon:"🪂",  label:"Glider / Sailplane",   desc:"Unpowered, soaring flight"},
+  {id:"heli",   icon:"🚁",  label:"Helicopter",            desc:"Rotary wing operations"},
+  {id:"drone",  icon:"🤖",  label:"Drone / sUAS",          desc:"Commercial or recreational UAS"},
+  {id:"microlight", icon:"🪁", label:"Microlight / SSEA",  desc:"Sub-115kg flex/3-axis"},
+];
+
+// ICAO flight categories
+var FLIGHT_RULES = [
+  {id:"vfr", label:"VFR", desc:"Visual Flight Rules"},
+  {id:"ifr", label:"IFR", desc:"Instrument Flight Rules"},
+];
+
+// Density altitude calculation (ICAO standard atmosphere)
+function densityAlt(tempC, pressureMb, altM) {
+  var stdTemp  = 15 - (altM * 0.0065);   // ISA temp at altitude
+  var pressAlt = (1013.25 - pressureMb) * 30 + altM * 3.28084; // pressure alt in ft
+  var da       = pressAlt + 120 * (tempC - stdTemp);
+  return Math.round(da);
+}
+
+// Crosswind component
+function crosswindComponent(windMph, windDir, runwayHdg) {
+  var angle = Math.abs(windDir - runwayHdg);
+  if (angle > 180) angle = 360 - angle;
+  var cross = Math.abs(Math.round(windMph * Math.sin(angle * Math.PI / 180)));
+  var head  = Math.round(windMph * Math.cos(angle * Math.PI / 180));
+  return { cross: cross, head: head, angle: Math.round(angle) };
+}
+
+// Dewpoint depression and icing risk
+function icingRisk(tempC, dewpointC) {
+  var depression = tempC - dewpointC;
+  if (tempC >= -20 && tempC <= 0 && depression <= 3)
+    return {level:"Severe",   color:"#ff0000", desc:"Severe icing — avoid flight in cloud/precipitation"};
+  if (tempC >= -20 && tempC <= 2 && depression <= 6)
+    return {level:"Moderate", color:"#ff6600", desc:"Moderate icing risk — carb heat, de-ice systems required"};
+  if (tempC <= 5 && depression <= 10)
+    return {level:"Light",    color:"#ffcc00", desc:"Light icing possible — monitor closely in cloud"};
+  return {level:"Nil",      color:"#44cc66", desc:"Icing risk low"};
+}
+
+// Carburetor icing risk (temp 10–25°C, humidity >70%)
+function carbIcingRisk(tempC, humidity) {
+  if (tempC >= 0 && tempC <= 25 && humidity >= 80)
+    return {level:"High",     color:"#ff6600", desc:"High carb ice risk — use carb heat continuously"};
+  if (tempC >= 0 && tempC <= 30 && humidity >= 60)
+    return {level:"Moderate", color:"#ffcc00", desc:"Moderate carb ice risk — check carb heat regularly"};
+  return {level:"Low",      color:"#44cc66", desc:"Carb icing unlikely"};
+}
+
+// Turbulence estimate from wind shear and surface heating
+function turbulenceLevel(windMph, gustMph, tempC, humidity, cloudCover) {
+  var gustFactor = gustMph - windMph;
+  var thermalActivity = tempC >= 20 && humidity < 60 && cloudCover < 50;
+  var shear = gustFactor >= 15 || windMph >= 30;
+  if (gustFactor >= 20 || windMph >= 40)
+    return {level:"Severe",   color:"#ff0000", desc:"Severe turbulence — avoid flight if possible"};
+  if (shear || thermalActivity)
+    return {level:"Moderate", color:"#ff8800", desc:"Moderate turbulence — tighten harness, reduce speed"};
+  if (gustFactor >= 8 || (tempC >= 15 && humidity < 65))
+    return {level:"Light",    color:"#ffcc00", desc:"Light turbulence — bumpy but manageable"};
+  return {level:"Nil/Smooth",color:"#44cc66", desc:"Smooth air expected"};
+}
+
+// Visibility category (ICAO)
+function visCat(humidity, rain, condition) {
+  if (condition.includes("🌫") || humidity >= 97)
+    return {cat:"CAT III / Fog",  nm:"<200m RVR",  color:"#ff0000", vfr:false, desc:"Fog — instrument approach only, VFR flight prohibited"};
+  if (rain >= 70 && humidity >= 92)
+    return {cat:"CAT II",        nm:"<800m",       color:"#ff4400", vfr:false, desc:"Very poor — IFR only, VFR not possible"};
+  if (rain >= 50 || humidity >= 88)
+    return {cat:"CAT I",         nm:"<5000m",      color:"#ff8800", vfr:false, desc:"Poor — marginal VFR, IFR preferred"};
+  if (rain >= 30 || humidity >= 80)
+    return {cat:"MVFR",          nm:"5–8km",       color:"#ffcc00", vfr:true,  desc:"Marginal VFR — caution required, maintain cloud clearance"};
+  return    {cat:"VMC",          nm:">10km",       color:"#44cc66", vfr:true,  desc:"Good visibility — VFR conditions"};
+}
+
+// Cloud base estimate from dewpoint depression
+function cloudBaseEst(tempC, dewpointC) {
+  var depression = tempC - dewpointC;
+  var ftAGL = Math.round(depression * 400); // ~400ft per °C depression
+  if (ftAGL < 0) ftAGL = 0;
+  return ftAGL;
+}
+
+// VFR minima check (UK CAA ANO — Class G, day VMC)
+function vfrMinima(visCatObj, cloudBaseFt, windMph, gustMph) {
+  if (!visCatObj.vfr)
+    return {status:"stop",   color:"#ff0000", reason:"Visibility below VFR minima — IFR only or no flight"};
+  if (cloudBaseFt < 500)
+    return {status:"stop",   color:"#ff0000", reason:"Cloud base "+cloudBaseFt+"ft — below Class G VFR minima (500ft)"};
+  if (windMph >= 40 || gustMph >= 50)
+    return {status:"stop",   color:"#ff0000", reason:"Wind "+windMph+"mph / gusts "+gustMph+"mph — exceeds most light aircraft limits"};
+  if (cloudBaseFt < 1000)
+    return {status:"delay",  color:"#ff8800", reason:"Cloud base "+cloudBaseFt+"ft — very low, restricted manoeuvring"};
+  if (visCatObj.cat === "MVFR")
+    return {status:"caution",color:"#ffcc00", reason:"Marginal VMC — maintain 1000ft/1500m cloud clearance"};
+  if (windMph >= 25)
+    return {status:"caution",color:"#ffcc00", reason:"Strong crosswind potential — check runway alignment"};
+  return {status:"go",     color:"#44cc66", reason:"VFR conditions — standard cloud clearances apply"};
+}
+
+// Drone-specific rules (UK CAE/CAA)
+function droneGoNo(windMph, gustMph, visibility, rain, tempC) {
+  if (gustMph >= 28)
+    return {status:"stop",   color:"#ff0000", reason:"Gusts "+gustMph+"mph — above typical sUAS limit (~24mph)"};
+  if (windMph >= 24)
+    return {status:"stop",   color:"#ff0000", reason:"Wind "+windMph+"mph — exceeds most drone wind limits"};
+  if (rain >= 50 || visibility === "CAT III / Fog" || visibility === "CAT II")
+    return {status:"stop",   color:"#ff0000", reason:"Precipitation or fog — do not fly unless IP67+ rated"};
+  if (gustMph >= 20)
+    return {status:"delay",  color:"#ff8800", reason:"Gusts "+gustMph+"mph — marginal, check manufacturer limit"};
+  if (windMph >= 18)
+    return {status:"caution",color:"#ffcc00", reason:"Moderate wind — battery drain elevated, monitor RTH"};
+  if (tempC <= 0)
+    return {status:"caution",color:"#ffcc00", reason:"Near-freezing — battery performance reduced significantly"};
+  return {status:"go",     color:"#44cc66", reason:"Conditions within typical drone operating envelope"};
+}
+
+// QNH / QFE / QNE explanation
+function altimeterSetting(pressureMb) {
+  return {
+    qnh: Math.round(pressureMb),
+    qfe: Math.round(pressureMb - 3), // approx for airfield ~100ft amsl
+    qne: 1013,
+    note: pressureMb >= 1020 ? "High pressure — altimeter will read lower than actual" :
+          pressureMb <= 1000 ? "Low pressure — altimeter will read higher than actual" :
+          "Near-standard pressure"
+  };
+}
+
+// METAR-style summary (not real METAR but formatted similarly)
+function metarSummary(d, cloudBaseFt, visObj) {
+  var wdir = d.windDir || "VRB";
+  var wspd = Math.round(d.windMph * 0.868976); // to knots
+  var gust = Math.round(d.gustMph * 0.868976);
+  var gustStr = (gust - wspd) >= 3 ? "G"+String(gust).padStart(2,"0") : "";
+  var windStr = (typeof wdir === "number" ? String(Math.round(wdir/10)*10).padStart(3,"0") : wdir)+String(wspd).padStart(2,"0")+gustStr+"KT";
+  var visStr  = visObj.nm;
+  var cloud   = cloudBaseFt < 500 ? "OVC"+String(Math.round(cloudBaseFt/100)).padStart(3,"0") :
+                cloudBaseFt < 1500 ? "BKN"+String(Math.round(cloudBaseFt/100)).padStart(3,"0") :
+                cloudBaseFt < 3000 ? "SCT"+String(Math.round(cloudBaseFt/100)).padStart(3,"0") : "FEW030";
+  var tempStr = Math.round(d.temp)+"/"+(Math.round(d.temp - ((100-d.humidity)/5)));
+  var qnh     = "Q"+Math.round(d.pressure);
+  return windStr+" "+visStr+" "+cloud+" "+tempStr+" "+qnh;
+}
+
+function AviationDashboard(props) {
+  var lat=props.lat, lon=props.lon, locationName=props.locationName, forecastData=props.forecastData, hourlyRaw=props.hourlyRaw, u=props.u||{temp:"C",speed:"mph"};
+  var acType   = useState("ppl");      var iAcType=acType[0];    var setAcType=acType[1];
+  var flightRule=useState("vfr");      var iFlightRule=flightRule[0]; var setFlightRule=flightRule[1];
+  var dayIdx   = useState(0);          var iDayIdx=dayIdx[0];    var setDayIdx=dayIdx[1];
+  var tab      = useState("brief");    var iTab=tab[0];          var setTab=tab[1];
+  var rwyHdg   = useState(270);        var iRwyHdg=rwyHdg[0];   var setRwyHdg=rwyHdg[1];
+  var elevFt   = useState(100);        var iElevFt=elevFt[0];    var setElevFt=elevFt[1];
+
+  function cvtT(c){return u.temp==="F"?+(c*9/5+32).toFixed(1):+c;}
+  function tUnit(){return u.temp==="F"?"°F":"°C";}
+  function kts(mph){return Math.round(mph*0.868976);}
+
+  var days = forecastData||[];
+  if(!days.length) return null;
+  var day = days[Math.min(iDayIdx, days.length-1)];
+
+  // Derived values
+  var dewpoint  = Math.round(day.temp - ((100-day.humidity)/5));
+  var cloudBase = cloudBaseEst(day.temp, dewpoint);
+  var visObj    = visCat(day.humidity, day.rain, day.condition);
+  var vfrCheck  = vfrMinima(visObj, cloudBase, day.windMph, day.gustMph);
+  var icing     = icingRisk(day.temp, dewpoint);
+  var carbIce   = carbIcingRisk(day.temp, day.humidity);
+  var turb      = turbulenceLevel(day.windMph, day.gustMph, day.temp, day.humidity, day.humidity*0.7);
+  var da        = densityAlt(day.temp, day.pressure, iElevFt*0.3048);
+  var altSet    = altimeterSetting(day.pressure);
+  var windKts   = kts(day.windMph);
+  var gustKts   = kts(day.gustMph);
+  var xwind     = crosswindComponent(day.windMph, day.windDir||270, iRwyHdg);
+  var metar     = metarSummary(day, cloudBase, visObj);
+  var droneGo   = droneGoNo(day.windMph, day.gustMph, visObj.cat, day.rain, day.temp);
+
+  // Overall go/no-go for selected aircraft
+  var overallGo = (function(){
+    if(iAcType==="drone") return droneGo;
+    if(iFlightRule==="vfr") return vfrCheck;
+    // IFR - more permissive on vis/cloud but still wind limits
+    if(day.windMph>=40||day.gustMph>=50)
+      return {status:"stop",  color:"#ff0000",reason:"Wind "+day.windMph+"mph/gusts "+day.gustMph+"mph — structural limits"};
+    if(icing.level==="Severe")
+      return {status:"stop",  color:"#ff0000",reason:"Severe icing — avoid cloud and precipitation"};
+    if(icing.level==="Moderate")
+      return {status:"delay", color:"#ff8800",reason:"Moderate icing — ensure anti-ice systems serviceable"};
+    return {status:"go",    color:"#44cc66",reason:"IFR conditions — standard instrument procedures apply"};
+  })();
+
+  var sectionSty={background:"rgba(255,255,255,0.02)",border:"1px solid rgba(100,160,255,0.25)",borderRadius:16,padding:"18px 16px",marginBottom:16};
+  var tabs=[{id:"brief",label:"Wx Brief"},{id:"performance",label:"Performance"},{id:"hazards",label:"Hazards"},{id:"drone",label:"Drone/UAS"},{id:"planning",label:"7-Day"}];
+
+  return (
+    React.createElement('div', {style:sectionSty}
+
+    , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}
+      , React.createElement('span', {style:{fontSize:20}}, "✈️")
+      , React.createElement('div', {style:{flex:1}},
+        React.createElement('div', {style:{fontSize:13,color:"#aabbff",letterSpacing:2,textTransform:"uppercase"}}, "Aviation Dashboard"),
+        React.createElement('div', {style:{fontSize:10,color:"#555",marginTop:1}}, locationName)
+      )
+      , React.createElement('div', {style:{padding:"4px 12px",borderRadius:12,background:overallGo.color+"18",border:"1px solid "+overallGo.color+"44",fontSize:11,color:overallGo.color,fontWeight:"bold"}}, overallGo.status.toUpperCase())
+    )
+
+    , React.createElement('div', {style:{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}},
+      AIRCRAFT_TYPES.map(function(a){var on=iAcType===a.id;return React.createElement('button', {key:a.id,onClick:function(){setAcType(a.id);},style:{padding:"5px 10px",borderRadius:10,border:"1px solid",borderColor:on?"#88aaff":"rgba(255,255,255,0.1)",background:on?"rgba(100,160,255,0.15)":"rgba(255,255,255,0.03)",color:on?"#aabbff":"#666",fontSize:11,cursor:"pointer"}}, a.icon+" "+a.label);})
+    )
+
+    , iAcType!=="drone" && React.createElement('div', {style:{display:"flex",gap:6,marginBottom:10}},
+      FLIGHT_RULES.map(function(r){var on=iFlightRule===r.id;return React.createElement('button', {key:r.id,onClick:function(){setFlightRule(r.id);},style:{padding:"4px 14px",borderRadius:8,border:"1px solid",borderColor:on?"#aabbff":"rgba(255,255,255,0.1)",background:on?"rgba(100,160,255,0.15)":"rgba(255,255,255,0.03)",color:on?"#aabbff":"#666",fontSize:11,cursor:"pointer"}}, r.label+" — "+r.desc);})
+    )
+
+    , React.createElement('div', {style:{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:4}},
+      days.slice(0,7).map(function(d,i){
+        var dVis=visCat(d.humidity,d.rain,d.condition);
+        var dVfr=vfrMinima(dVis,cloudBaseEst(d.temp,Math.round(d.temp-((100-d.humidity)/5))),d.windMph,d.gustMph);
+        var dGo=iAcType==="drone"?droneGoNo(d.windMph,d.gustMph,dVis.cat,d.rain,d.temp):dVfr;
+        var on=iDayIdx===i;
+        return React.createElement('button', {key:i,onClick:function(){setDayIdx(i);},style:{flex:"0 0 auto",padding:"6px 10px",borderRadius:10,border:"1px solid",borderColor:on?dGo.color:"rgba(255,255,255,0.08)",background:on?"rgba(255,255,255,0.07)":"transparent",color:on?"#e8dcc8":"#666",fontSize:11,cursor:"pointer",minWidth:52,textAlign:"center"}},
+          React.createElement('div', {style:{fontSize:9,color:dGo.color,marginBottom:2}}, "●"),
+          React.createElement('div', null, d.date.split(" ")[0])
+        );
+      })
+    )
+
+    , React.createElement('div', {style:{display:"flex",gap:0,borderBottom:"1px solid rgba(255,255,255,0.07)",marginBottom:14,overflowX:"auto"}},
+      tabs.map(function(t){var on=iTab===t.id;return React.createElement('button', {key:t.id,onClick:function(){setTab(t.id);},style:{padding:"7px 12px",background:"none",border:"none",borderBottom:on?"2px solid #88aaff":"2px solid transparent",color:on?"#aabbff":"#555",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}, t.label);})
+    )
+
+    , iTab==="brief" && React.createElement('div', null
+
+      // METAR-style summary
+      , React.createElement('div', {style:{background:"rgba(0,0,0,0.35)",borderRadius:10,padding:"10px 14px",marginBottom:12,fontFamily:"monospace"}},
+        React.createElement('div', {style:{fontSize:9,color:"#666",letterSpacing:2,marginBottom:4}}, "METAR-STYLE SUMMARY (ESTIMATED — NOT A REAL METAR)"),
+        React.createElement('div', {style:{fontSize:12,color:"#aabbff",lineHeight:1.8}}, locationName.toUpperCase().replace(/[^A-Z0-9 ]/g,"").substring(0,10)+" "+day.date.toUpperCase()+" AUTO"),
+        React.createElement('div', {style:{fontSize:13,color:"#e8dcc8",letterSpacing:1,lineHeight:1.8}}, metar)
+      )
+
+      // Go/no-go card
+      , React.createElement('div', {style:{background:overallGo.color+"15",border:"1px solid "+overallGo.color+"44",borderRadius:12,padding:"12px 14px",marginBottom:12}},
+        React.createElement('div', {style:{fontSize:13,color:overallGo.color,fontWeight:"bold",marginBottom:4}},
+          (iAcType==="drone"?"🤖 Drone":"✈️ "+AIRCRAFT_TYPES.find(function(a){return a.id===iAcType;}).label)+" · "+(iAcType!=="drone"?iFlightRule.toUpperCase()+" · ":"")+overallGo.status.toUpperCase()
+        ),
+        React.createElement('div', {style:{fontSize:11,color:"#9a8c7a"}}, overallGo.reason)
+      )
+
+      // Key wx grid
+      , React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}},
+        [
+          {icon:"💨",label:"Surface Wind",    val:kts(day.windMph)+"kt",         color:day.windMph>=30?"#ff4400":day.windMph>=20?"#ffcc00":"#aabbff", sub:"Gusts: "+kts(day.gustMph)+"kt ("+day.gustMph+"mph)"},
+          {icon:"☁️",label:"Cloud Base (est.)",val:cloudBase+"ft AGL",           color:cloudBase<500?"#ff0000":cloudBase<1500?"#ff8800":cloudBase<3000?"#ffcc00":"#44cc66", sub:visObj.cat+" · "+visObj.nm},
+          {icon:"👁️",label:"Visibility",       val:visObj.cat,                   color:visObj.color, sub:visObj.nm},
+          {icon:"📊",label:"QNH",              val:altSet.qnh+"mb / "+Math.round(altSet.qnh*0.02953)+"inHg", color:"#88aaff", sub:altSet.note},
+          {icon:"🌡️",label:"Temp / Dewpoint",  val:cvtT(day.temp)+tUnit()+" / "+cvtT(dewpoint)+tUnit(), color:"#e8dcc8", sub:"Depression: "+(day.temp-dewpoint).toFixed(0)+"°C"},
+          {icon:"🌧️",label:"Precipitation",    val:day.rain+"%",                 color:day.rain>=60?"#ff8800":day.rain>=30?"#ffcc00":"#44cc66", sub:day.rainMm+"mm · "+day.condition},
+        ].map(function(c,i){
+          return React.createElement('div', {key:i,style:{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 11px",border:"1px solid rgba(255,255,255,0.06)"}},
+            React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:3}}, c.icon+" "+c.label),
+            React.createElement('div', {style:{fontSize:13,color:c.color,fontWeight:"bold"}}, c.val),
+            React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:1}}, c.sub)
+          );
+        })
+      )
+
+      // Turbulence + icing summary strip
+      , React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}},
+        React.createElement('div', {style:{padding:"10px 12px",borderRadius:10,background:turb.color+"12",border:"1px solid "+turb.color+"33"}},
+          React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:3,letterSpacing:1}}, "💫 TURBULENCE"),
+          React.createElement('div', {style:{fontSize:13,color:turb.color,fontWeight:"bold"}}, turb.level),
+          React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:2}}, turb.desc)
+        ),
+        React.createElement('div', {style:{padding:"10px 12px",borderRadius:10,background:icing.color+"12",border:"1px solid "+icing.color+"33"}},
+          React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:3,letterSpacing:1}}, "❄️ ICING"),
+          React.createElement('div', {style:{fontSize:13,color:icing.color,fontWeight:"bold"}}, icing.level),
+          React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:2}}, icing.desc)
+        )
+      )
+
+      // Hourly cloud/vis strip (if hourly data available)
+      , hourlyRaw&&hourlyRaw.times&&React.createElement('div', {style:{marginBottom:8}},
+        React.createElement('div', {style:{fontSize:10,color:"#555",letterSpacing:2,textTransform:"uppercase",marginBottom:6}}, "Hourly Visibility Trend — "+day.date),
+        React.createElement('div', {style:{display:"flex",gap:2,alignItems:"flex-end",height:44}},
+          (function(){
+            var seen={},dates=[];
+            hourlyRaw.times.forEach(function(t){var d=t.split("T")[0];if(!seen[d]){seen[d]=true;dates.push(d);}});
+            var target=dates[iDayIdx];
+            if(!target) return [];
+            return hourlyRaw.times.map(function(t,i){
+              if(t.split("T")[0]!==target) return null;
+              var h=parseInt(t.split("T")[1]);
+              var hum=hourlyRaw.humidity[i]||55;
+              var rain=hourlyRaw.rain[i]||0;
+              var code=hourlyRaw.codes[i]||0;
+              var cond=condFromCode(code,Math.round(hourlyRaw.temps[i]||15),hum,hourlyRaw.rainMm[i]||0);
+              var hVis=visCat(hum,rain,cond);
+              var htPct=hVis.vfr?Math.min(100,80+Math.round((1-rain/100)*20)):Math.max(10,30-rain/5);
+              return React.createElement('div', {key:i,title:String(h).padStart(2,"0")+":00 — "+hVis.cat,style:{flex:1,height:htPct+"%",background:hVis.color,borderRadius:"2px 2px 0 0",opacity:0.85,minHeight:3}});
+            }).filter(Boolean);
+          })()
+        ),
+        React.createElement('div', {style:{display:"flex",justifyContent:"space-between",fontSize:9,color:"#444",marginTop:2}},
+          React.createElement('span', null,"00:00"), React.createElement('span', null,"06:00"), React.createElement('span', null,"12:00"), React.createElement('span', null,"18:00"), React.createElement('span', null,"24:00")
+        )
+      )
+    )
+
+    , iTab==="performance" && React.createElement('div', null
+
+      // Density altitude card
+      , React.createElement('div', {style:{background:da>5000?"rgba(255,80,0,0.12)":da>3000?"rgba(255,160,0,0.08)":"rgba(68,204,102,0.06)",border:"1px solid "+(da>5000?"rgba(255,80,0,0.4)":da>3000?"rgba(255,160,0,0.3)":"rgba(68,204,102,0.2)"),borderRadius:14,padding:"14px 16px",marginBottom:12}},
+        React.createElement('div', {style:{fontSize:10,color:"#555",letterSpacing:1,marginBottom:4}}, "📐 DENSITY ALTITUDE"),
+        React.createElement('div', {style:{display:"flex",alignItems:"baseline",gap:8,marginBottom:4}},
+          React.createElement('span', {style:{fontSize:28,fontWeight:"bold",color:da>5000?"#ff6600":da>3000?"#ffcc00":"#44cc66"}}, da>0?"+":"-", Math.abs(da)+"ft"),
+          React.createElement('span', {style:{fontSize:12,color:"#888"}}, "(pressure alt: "+iElevFt+"ft field elev)")
+        ),
+        React.createElement('div', {style:{fontSize:11,color:"#9a8c7a",lineHeight:1.6}},
+          da > 3000 ? "⚠️ High density altitude — expect significantly degraded climb performance, longer take-off roll. Use POH performance tables." :
+          da > 1000 ? "Moderate density altitude — some performance degradation. Check POH tables." :
+          "Low density altitude — near-standard performance expected."
+        ),
+        React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginTop:8,fontSize:11}},
+          React.createElement('div', {style:{color:"#9a8c7a"}}, "OAT: ", React.createElement('span', {style:{color:"#e8dcc8"}}, cvtT(day.temp)+tUnit())),
+          React.createElement('div', {style:{color:"#9a8c7a"}}, "QNH: ", React.createElement('span', {style:{color:"#88aaff"}}, altSet.qnh+"mb")),
+          React.createElement('div', {style:{color:"#9a8c7a"}}, "Field: ", React.createElement('span', {style:{color:"#e8dcc8"}}, iElevFt+"ft AMSL"))
+        )
+      )
+
+      // Airfield elevation slider
+      , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:8,marginBottom:14,fontSize:11,color:"#666"}},
+        "Airfield elevation (ft AMSL):",
+        React.createElement('input', {type:"range",min:0,max:3000,step:50,value:iElevFt,onChange:function(ev){setElevFt(parseInt(ev.target.value));},style:{flex:1,accentColor:"#88aaff"}}),
+        React.createElement('span', {style:{color:"#aabbff",minWidth:55}}, iElevFt+"ft")
+      )
+
+      // Crosswind component calculator
+      , React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px",border:"1px solid rgba(255,255,255,0.07)",marginBottom:12}},
+        React.createElement('div', {style:{fontSize:11,color:"#aabbff",fontWeight:"bold",marginBottom:10}}, "↔️ Crosswind Component Calculator"),
+        React.createElement('div', {style:{display:"flex",alignItems:"center",gap:8,marginBottom:10,fontSize:11,color:"#666"}},
+          "Runway heading (°T):",
+          React.createElement('input', {type:"range",min:0,max:350,step:10,value:iRwyHdg,onChange:function(ev){setRwyHdg(parseInt(ev.target.value));},style:{flex:1,accentColor:"#88aaff"}}),
+          React.createElement('span', {style:{color:"#aabbff",minWidth:40}}, String(iRwyHdg).padStart(3,"0")+"°")
+        ),
+        React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
+          React.createElement('div', {style:{textAlign:"center",padding:"10px",background:"rgba(255,255,255,0.03)",borderRadius:8}},
+            React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:3}}, "CROSSWIND"),
+            React.createElement('div', {style:{fontSize:20,color:xwind.cross>=20?"#ff4400":xwind.cross>=15?"#ffcc00":"#44cc66",fontWeight:"bold"}}, xwind.cross+"kt"),
+            React.createElement('div', {style:{fontSize:9,color:"#555"}}, "90° component")
+          ),
+          React.createElement('div', {style:{textAlign:"center",padding:"10px",background:"rgba(255,255,255,0.03)",borderRadius:8}},
+            React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:3}}, xwind.head>=0?"HEADWIND":"TAILWIND"),
+            React.createElement('div', {style:{fontSize:20,color:xwind.head<-5?"#ff8800":"#88aaff",fontWeight:"bold"}}, Math.abs(xwind.head)+"kt"),
+            React.createElement('div', {style:{fontSize:9,color:"#555"}}, xwind.head<0?"Into performance":"Aids take-off")
+          ),
+          React.createElement('div', {style:{textAlign:"center",padding:"10px",background:"rgba(255,255,255,0.03)",borderRadius:8}},
+            React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:3}}, "WIND ANGLE"),
+            React.createElement('div', {style:{fontSize:20,color:"#aabbff",fontWeight:"bold"}}, xwind.angle+"°"),
+            React.createElement('div', {style:{fontSize:9,color:"#555"}}, "Off runway")
+          )
+        ),
+        React.createElement('div', {style:{marginTop:8,fontSize:10,color:"#666",lineHeight:1.6}},
+          "Wind: ", React.createElement('span', {style:{color:"#aabbff"}}, windKts+"kt"),
+          " · Gusts: ", React.createElement('span', {style:{color:gustKts-windKts>=10?"#ffcc00":"#aabbff"}}, gustKts+"kt"),
+          " · Typical light aircraft crosswind limit: 12–17kt (check POH)"
+        )
+      )
+
+      // Altimeter settings
+      , React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px",border:"1px solid rgba(255,255,255,0.07)"}},
+        React.createElement('div', {style:{fontSize:11,color:"#aabbff",fontWeight:"bold",marginBottom:8}}, "📊 Altimeter Settings"),
+        React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
+          [
+            {label:"QNH",val:altSet.qnh+"mb",sub:"Altitude AMSL",color:"#88aaff"},
+            {label:"QFE (est.)",val:(altSet.qnh-Math.round(iElevFt/30))+"mb",sub:"Height AGL at field",color:"#aaddff"},
+            {label:"QNE",val:"1013mb",sub:"FL — standard pressure",color:"#9a8c7a"},
+          ].map(function(a,i){
+            return React.createElement('div', {key:i,style:{textAlign:"center",padding:"10px 8px",background:"rgba(255,255,255,0.03)",borderRadius:8,border:"1px solid rgba(255,255,255,0.06)"}},
+              React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4}}, a.label),
+              React.createElement('div', {style:{fontSize:16,color:a.color,fontWeight:"bold"}}, a.val),
+              React.createElement('div', {style:{fontSize:9,color:"#555",marginTop:2}}, a.sub)
+            );
+          })
+        ),
+        React.createElement('div', {style:{marginTop:8,fontSize:10,color:"#555",lineHeight:1.5}}, altSet.note)
+      )
+    )
+
+    , iTab==="hazards" && React.createElement('div', null
+
+      , [
+        {title:"❄️ Structural Icing",     result:icing,    detail:"Icing occurs when supercooled water droplets freeze on contact with airframe. Worst between 0°C and −20°C in cloud or precipitation. Check for PIREPs and SIGMETs before flight."},
+        {title:"🚗 Carb/Induction Icing", result:carbIce,  detail:"Carburettor ice most likely 0–25°C with RH>70%. Apply carb heat before power reduction. Engine-driven aircraft are most vulnerable during descent at low power."},
+        {title:"💫 Turbulence",            result:turb,     detail:"Convective turbulence peaks 1000–1600 local in summer. Mechanical turbulence near hills/buildings in strong winds. Clear Air Turbulence (CAT) in jetstream near FL300+."},
+        {title:"👁️ Visibility / VMC",      result:{level:visObj.cat,color:visObj.color,desc:visObj.desc}, detail:"UK Class G VMC minima: 5km vis, clear of cloud (below 3000ft AMSL/1000ft AGL). At night: 5km, 1000ft below cloud, 1500m horiz."},
+        {title:"⬇️ Windshear / Microburst", result:{level:day.gustMph-day.windMph>=15?"Risk Present":"Low Risk",color:day.gustMph-day.windMph>=15?"#ff8800":"#44cc66",desc:day.gustMph-day.windMph>=15?"Gust spread "+(day.gustMph-day.windMph)+"mph — windshear on approach possible":"Gust spread within normal limits"}, detail:"Windshear most hazardous on approach and take-off. Monitor for sudden airspeed changes. Report to ATC if encountered."},
+        {title:"🌪️ Wake Turbulence",        result:{level:"Awareness",color:"#88aaff",desc:"Allow 3min or required separation behind heavy/super aircraft"}, detail:"Wake turbulence from heavier aircraft can be severe even in calm conditions. Worst in light winds. At busy airfields follow ATC separation instructions."},
+      ].map(function(item,i){
+        return React.createElement('div', {key:i,style:{padding:"12px 14px",borderRadius:12,border:"1px solid "+item.result.color+"33",borderLeft:"3px solid "+item.result.color,background:item.result.color+"08",marginBottom:8}},
+          React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,marginBottom:6}},
+            React.createElement('div', {style:{flex:1,fontSize:12,color:"#e8dcc8",fontWeight:"bold"}}, item.title),
+            React.createElement('span', {style:{fontSize:11,padding:"2px 10px",borderRadius:12,border:"1px solid "+item.result.color,color:item.result.color}}, item.result.level)
+          ),
+          React.createElement('div', {style:{fontSize:11,color:item.result.color,marginBottom:4}}, item.result.desc),
+          React.createElement('div', {style:{fontSize:10,color:"#555",lineHeight:1.6}}, item.detail)
+        );
+      })
+
+      // Sunrise/daylight
+      , React.createElement('div', {style:{padding:"10px 12px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",marginTop:4}},
+        React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4,letterSpacing:1}}, "🌅 DAY/NIGHT (SSR +30 / SS -30 APPROX)"),
+        React.createElement('div', {style:{fontSize:12,color:"#ffcc44"}},
+          "Night VMC minima apply approx 30min after sunset. Carry serviceable lights. Check NOTAM for local curfews and night-flight restrictions."
+        )
+      )
+    )
+
+    , iTab==="drone" && React.createElement('div', null
+
+      , React.createElement('div', {style:{background:droneGo.color+"15",border:"1px solid "+droneGo.color+"44",borderRadius:12,padding:"12px 14px",marginBottom:12}},
+        React.createElement('div', {style:{fontSize:13,color:droneGo.color,fontWeight:"bold",marginBottom:4}}, "🤖 Drone Operations: "+droneGo.status.toUpperCase()),
+        React.createElement('div', {style:{fontSize:11,color:"#9a8c7a"}}, droneGo.reason)
+      )
+
+      , React.createElement('div', {style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}},
+        [
+          {icon:"💨",label:"Wind Speed",    val:day.windMph+"mph ("+windKts+"kt)",  color:day.windMph>=24?"#ff4400":day.windMph>=18?"#ffcc00":"#44cc66",  sub:"Typical limit: ~24mph"},
+          {icon:"💥",label:"Gusts",         val:day.gustMph+"mph ("+gustKts+"kt)",  color:day.gustMph>=28?"#ff4400":day.gustMph>=20?"#ffcc00":"#44cc66",  sub:"Gust spread: +"+(day.gustMph-day.windMph)+"mph"},
+          {icon:"🌧️",label:"Precipitation",  val:day.rain+"%",                       color:day.rain>=50?"#ff8800":day.rain>=25?"#ffcc00":"#44cc66",         sub:day.rainMm+"mm · Check IP rating"},
+          {icon:"🌡️",label:"Temperature",    val:cvtT(day.temp)+tUnit(),             color:day.temp<=0?"#88ccff":day.temp<=5?"#ffcc00":"#44cc66",           sub:day.temp<=5?"Battery drain elevated":"Normal battery performance"},
+          {icon:"👁️",label:"Visibility",     val:visObj.cat,                         color:visObj.color,                                                   sub:"VLOS must be maintained"},
+          {icon:"☁️",label:"Cloud Base",     val:cloudBase+"ft AGL",                 color:cloudBase<400?"#ff8800":"#44cc66",                              sub:"Max altitude: 400ft AGL (CAA)"},
+        ].map(function(c,i){
+          return React.createElement('div', {key:i,style:{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 11px",border:"1px solid rgba(255,255,255,0.06)"}},
+            React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:3}}, c.icon+" "+c.label),
+            React.createElement('div', {style:{fontSize:13,color:c.color,fontWeight:"bold"}}, c.val),
+            React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:1}}, c.sub)
+          );
+        })
+      )
+
+      // UK CAA rules reminder
+      , React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px",border:"1px solid rgba(255,255,255,0.07)"}},
+        React.createElement('div', {style:{fontSize:11,color:"#aabbff",fontWeight:"bold",marginBottom:8}}, "🇬🇧 UK CAA / CAE Key Rules (2024)"),
+        [
+          "Register as operator at register.caa.co.uk if drone ≥250g or has camera",
+          "Max 400ft (120m) AGL altitude in Open Category",
+          "Always maintain Visual Line of Sight (VLOS)",
+          "Never fly within 1km of an airport/aerodrome without permission",
+          "Never fly over people, vehicles or built-up areas (check subcategory)",
+          "Check NATS Drone Assist app or CAA AirSpace app before every flight",
+          "Register flight plan for Specific Category operations (PDRA/STS)",
+          "Commercial operations require GVC/A2 CofC or operational authorisation",
+        ].map(function(rule,i){
+          return React.createElement('div', {key:i,style:{display:"flex",gap:8,marginBottom:5,fontSize:11,color:"#9a8c7a"}},
+            React.createElement('span', {style:{color:"#44aaff",flexShrink:0}}, "→"),
+            React.createElement('span', null, rule)
+          );
+        })
+      )
+    )
+
+    , iTab==="planning" && React.createElement('div', null
+
+      , React.createElement('div', {style:{fontSize:11,color:"#555",marginBottom:12}},
+        (iAcType==="drone"?"🤖 Drone":"✈️ "+(AIRCRAFT_TYPES.find(function(a){return a.id===iAcType;})||{label:""}).label)+" · 7-day aviation outlook"
+      )
+
+      , days.slice(0,7).map(function(d,i){
+        var dDew  = Math.round(d.temp-((100-d.humidity)/5));
+        var dVis  = visCat(d.humidity,d.rain,d.condition);
+        var dBase = cloudBaseEst(d.temp,dDew);
+        var dVfr  = vfrMinima(dVis,dBase,d.windMph,d.gustMph);
+        var dDrone= droneGoNo(d.windMph,d.gustMph,dVis.cat,d.rain,d.temp);
+        var dIcing= icingRisk(d.temp,dDew);
+        var dTurb = turbulenceLevel(d.windMph,d.gustMph,d.temp,d.humidity,d.humidity*0.7);
+        var dGo   = iAcType==="drone"?dDrone:dVfr;
+        var dDa   = densityAlt(d.temp,d.pressure,iElevFt*0.3048);
+        return React.createElement('div', {key:i,
+          onClick:function(){setDayIdx(i);setTab("brief");},
+          style:{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,0.06)",marginBottom:6,background:iDayIdx===i?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.02)",cursor:"pointer"}},
+          React.createElement('div', {style:{width:3,height:56,borderRadius:2,background:dGo.color,flexShrink:0}}),
+          React.createElement('div', {style:{flex:1}},
+            React.createElement('div', {style:{fontSize:12,color:"#e8dcc8"}}, d.date),
+            React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:1}},
+              d.condition+" · "+kts(d.windMph)+"kt wind · "+kts(d.gustMph)+"kt gusts · "+dBase+"ft base · "+dVis.cat
+            ),
+            React.createElement('div', {style:{fontSize:10,color:"#555",marginTop:1}},
+              "❄️ Icing: "+dIcing.level+" · 💫 Turb: "+dTurb.level+(dDa>2000?" · DA: +"+dDa+"ft":"")
+            )
+          ),
+          React.createElement('div', {style:{textAlign:"right"}},
+            React.createElement('span', {style:{fontSize:11,padding:"2px 10px",borderRadius:12,border:"1px solid "+dGo.color,color:dGo.color,fontWeight:"bold"}}, dGo.status.toUpperCase())
+          )
+        );
+      })
+
+      , React.createElement('div', {style:{marginTop:10,fontSize:10,color:"#444",lineHeight:1.7,padding:"8px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8}},
+        "⚠️ This dashboard uses Open-Meteo surface weather data as a planning aid only. ",
+        React.createElement('b', {style:{color:"#ffcc44"}}, "Always obtain a full pre-flight weather briefing"),
+        " from the Met Office Aviation forecast (avwx.rest), NOTAMs via NATS, and ATIS/D-ATIS before flight. This data is NOT a substitute for official aviation meteorological products."
+      )
+    )
+    )
+  );
+}
+
 function App(){
 var fd=useState([]);var iFd=fd[0];var setFd=fd[1];
 var hr=useState(null);var iHr=hr[0];var setHr=hr[1];
@@ -2903,6 +3417,7 @@ React.createElement('div', {}
 , iRoles.includes("angling")&&React.createElement(AnglingDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iRoles.includes("ski")&&React.createElement(SkiDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iRoles.includes("hiking")&&React.createElement(HikingDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
+, iRoles.includes("aviation")&&React.createElement(AviationDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,hourlyRaw:iHr,u:u})
 , iAp==="overview"&&React.createElement(WeatherOverview, {forecastData:iFd,locationName:iLn,u:u,hourlyRaw:iHr,lat:iLat,lon:iLon})
 , iAp==="ten"&&React.createElement(TenDayForecast, {forecastData:iFd,u:u})
 , iAp==="hourly"&&React.createElement(HourlyForecast, {forecastData:iFd,hourlyRaw:iHr,u:u})
