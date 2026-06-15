@@ -1,0 +1,33 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// The Weather Centre — Firebase Configuration
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// IMPORTANT: This file contains sensitive credentials.
+//
+// 1. Add this file to .gitignore — NEVER commit it to a public repository.
+//
+// 2. For Netlify deployment, you have two options:
+//
+//    OPTION A (recommended): Upload config.js as a deploy file in Netlify UI
+//      → Site settings → Deploys → Publish deploy → drag config.js into the
+//        deploy folder alongside index.html
+//
+//    OPTION B: Use Netlify build environment variables
+//      → Site settings → Environment variables → add each key below
+//      → Create a netlify.toml with a build command that writes config.js:
+//
+//        [build]
+//        command = "echo \"window.FIREBASE_CONFIG={apiKey:'$FIREBASE_API_KEY',authDomain:'$FIREBASE_AUTH_DOMAIN',projectId:'$FIREBASE_PROJECT_ID',storageBucket:'$FIREBASE_STORAGE_BUCKET',messagingSenderId:'$FIREBASE_MESSAGING_SENDER_ID',appId:'$FIREBASE_APP_ID'};\" > config.js"
+//        publish = "."
+//
+// 3. Fill in your actual Firebase values below:
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyBw7uo-9Fhd2WmRyjm3Rh_qEAPnDOjjdGI",
+  authDomain:        "the-global-weather-centr-34242.firebaseapp.com",
+  projectId:         "the-global-weather-centr-34242",
+  storageBucket:     "the-global-weather-centr-34242.firebasestorage.app",
+  messagingSenderId: "991077857189",
+  appId:             "1:991077857189:web:7648e7c59804c2aec31a4c"
+};
