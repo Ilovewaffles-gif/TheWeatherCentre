@@ -136,6 +136,73 @@ function sunFeel(t,m,h,c){return Math.round(t+condBonus(c,t,false)+humBonus(h)+w
 function shadeFeel(t,m,h,c){return Math.round(t+condBonus(c,t,true)+humBonus(h)+windBonus(m));}
 function hasSun(c){return c.includes("☀")||c.includes("🌡")||c.includes("🌤")||c.includes("⛅");}
 
+// ── Heatwave Underestimation Bias Correction ──────────────────────────────
+// During blocking-pattern UK heat events, NWP models systematically underestimate
+// daily max temps. Contributing factors: warm overnight lows (reduced nocturnal
+// cooling), low cloud cover (more solar heating than modelled), high pressure
+// (suppressed convective mixing), low humidity (continental/dry air advection),
+// and increasing model uncertainty with lead time. Correction only applies when
+// conditions actually look heatwave-prone — it does nothing on a normal day.
+function heatwaveBiasCorrection(temp,nightLow,cloudPct,leadDays,pressure,humidity){
+  if(temp<22)return 0; // bias only kicks in near/above heatwave-relevant temps
+  var corr=0;
+  // Warm night contribution: a night that didn't cool much below ~16C signals
+  // an already-warm air mass primed for a hotter-than-modelled day.
+  if(nightLow!=null){
+    if(nightLow>=20)corr+=0.7;
+    else if(nightLow>=18)corr+=0.5;
+    else if(nightLow>=16)corr+=0.3;
+    else if(nightLow>=14)corr+=0.1;
+  }
+  // Cloud cover: clear skies mean more direct solar heating than a model with
+  // even a slight positive cloud bias would suggest.
+  if(cloudPct!=null){
+    if(cloudPct<=15)corr+=0.6;
+    else if(cloudPct<=30)corr+=0.4;
+    else if(cloudPct<=45)corr+=0.2;
+  }
+  // Pressure: strong high pressure (blocking) suppresses convective cooling
+  // and vertical mixing, letting surface temps run hotter than modelled.
+  if(pressure!=null){
+    if(pressure>=1025)corr+=0.5;
+    else if(pressure>=1020)corr+=0.3;
+    else if(pressure>=1015)corr+=0.1;
+  }
+  // Humidity: lower relative humidity often indicates continental/dry air
+  // advection typical of UK heatwave setups, which models can underplay.
+  if(humidity!=null){
+    if(humidity<=35)corr+=0.4;
+    else if(humidity<=45)corr+=0.2;
+  }
+  // Lead time: forecast skill degrades further out, so scale the correction
+  // up gradually for less-certain days (model tends to "round down" extremes
+  // more aggressively the further out it forecasts).
+  var leadMult=1;
+  if(leadDays>=7)leadMult=1.5;
+  else if(leadDays>=4)leadMult=1.25;
+  else if(leadDays>=2)leadMult=1.1;
+  corr=corr*leadMult;
+  // Cap the correction — even in strong setups, don't run away with it.
+  if(corr>2.5)corr=2.5;
+  return Math.round(corr*10)/10;
+}
+function nightLowFromHourly(hrs,dayDateStr){
+  // hrs.time is ISO strings, hrs.temps parallel array. We want hours 0-5 of
+  // the given calendar day, which represent the tail of the overnight low
+  // before that day's daytime heating begins.
+  if(!hrs||!hrs.time||!hrs.temps)return null;
+  var vals=[];
+  for(var i=0;i<hrs.time.length;i++){
+    var t=hrs.time[i];
+    if(t.indexOf(dayDateStr)===0){
+      var hh=parseInt(t.substring(11,13),10);
+      if(hh>=0&&hh<=5)vals.push(hrs.temps[i]);
+    }
+  }
+  if(vals.length===0)return null;
+  return Math.min.apply(null,vals);
+}
+
 function condFromCode(code,temp,cloudPct,precipMm){
   var cloud=cloudPct!=null?cloudPct:50;
   var precip=precipMm!=null?precipMm:0;
@@ -1435,6 +1502,7 @@ React.createElement('div', { style: {position:"fixed",top:0,left:0,right:0,botto
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Wind Speed"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mph", cur: units.speed, set: function(v){handleSaveUnits(Object.assign({},units,{speed:v}));}},"mph"), React.createElement(Btn, { val: "kmh", cur: units.speed, set: function(v){handleSaveUnits(Object.assign({},units,{speed:v}));}},"km/h")))
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Precipitation"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mm", cur: units.rain, set: function(v){handleSaveUnits(Object.assign({},units,{rain:v}));}},"mm"), React.createElement(Btn, { val: "in", cur: units.rain, set: function(v){handleSaveUnits(Object.assign({},units,{rain:v}));}},"in")))
 , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0"}}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Pressure"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mbar", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"mbar"), React.createElement(Btn, { val: "pa", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"Pa"), React.createElement(Btn, { val: "bar", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"bar")))
+, React.createElement('div', { style: row}, React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, "Pressure Forecast"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, "Air pressure (sea-level) or local surface pressure")), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "msl", cur: units.pressureType||"msl", set: function(v){handleSaveUnits(Object.assign({},units,{pressureType:v}));}},"Air"), React.createElement(Btn, { val: "surface", cur: units.pressureType||"msl", set: function(v){handleSaveUnits(Object.assign({},units,{pressureType:v}));}},"Surface")))
 , user&&React.createElement('div', { style: {fontSize:11,color:"#4a9fd4",marginTop:8}}, "Synced to your account")
 )
 , iTab==="alerts"&&React.createElement('div', {}
@@ -2159,6 +2227,17 @@ days.slice(0,7).map(function(d,i){var dWaterT=waterTemp(d.temp,iWaterType);var d
 )
 );
 }
+// ═══════════════════════════════════════════════════════════════════════════════
+// ILLNESS & ALLERGY DASHBOARD — paste this entire block into index.html
+// Place it just BEFORE the closing </script> tag of the third <script> block
+// (the one that ends with the AnglingDashboard code, before SkiDashboard).
+//
+// Then add this line inside the App component render, after the WeatherOverview
+// section renders (search for "iAp==="overview"&&React.createElement(WeatherOverview"):
+//
+//   , iAp==="overview"&&React.createElement(IllnessAllergyDashboard, {forecastData:iFd,u:u,lat:iLat,lon:iLon,locationName:iLn})
+//
+// ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Scoring helpers ───────────────────────────────────────────────────────────
 
@@ -3943,7 +4022,7 @@ var st=useState("");var iSt=st[0];var setSt=st[1];
 var searching=useState(false);var iSearching=searching[0];var setSearching=searching[1];
 var err=useState("");var iErr=err[0];var setErr=err[1];
 var ap=useState("overview");var iAp=ap[0];var setAp=ap[1];
-var units=useState({temp:"C",speed:"mph",rain:"mm",pressure:"mbar"});var iUnits=units[0];var setUnits=units[1];
+var units=useState({temp:"C",speed:"mph",rain:"mm",pressure:"mbar",pressureType:"msl"});var iUnits=units[0];var setUnits=units[1];
 var searchResults=useState([]);var iSearchResults=searchResults[0];var setSearchResults=searchResults[1];
 var showResults=useState(false);var iShowResults=showResults[0];var setShowResults=showResults[1];
 var searchRef=useRef(null);
@@ -3991,6 +4070,19 @@ function(){fetchByName("London");}
 },[]);
 useEffect(function(){if(!iAlertPrefs.autoNotify||!iFd.length)return;var alerts=buildAlertList(iFd,iAlertPrefs);alerts.slice(0,2).forEach(function(a,i){setTimeout(function(){fireBrowserNotification("Weather Centre: "+a.title,a.body);},1000+i*800);});},[iFd,iAlertPrefs]);
 useEffect(function(){function handleClick(e){if(searchRef.current&&!searchRef.current.contains(e.target))setShowResults(false);}document.addEventListener("mousedown",handleClick);return function(){document.removeEventListener("mousedown",handleClick);};},[]);
+useEffect(function(){
+if(!iFd.length)return;
+var pt=iUnits.pressureType||"msl";
+setFd(function(prev){return prev.map(function(d){
+if(d.pressureMsl==null&&d.pressureSurface==null)return d;
+var v=pt==="surface"?d.pressureSurface:d.pressureMsl;
+if(v==null)return d;
+return Object.assign({},d,{pressure:v});
+});});
+if(iHr&&(iHr.pressureMsl||iHr.pressureSurface)){
+setHr(function(prevHr){if(!prevHr)return prevHr;var src=pt==="surface"?prevHr.pressureSurface:prevHr.pressureMsl;if(!src)return prevHr;return Object.assign({},prevHr,{pressure:src});});
+}
+},[iUnits.pressureType]);
 async function searchLocation(name){
 setSearching(true);setErr("");setSearchResults([]);setShowResults(false);
 try{var gR=await fetch("https://geocoding-api.open-meteo.com/v1/search?name="+encodeURIComponent(name)+"&count=8&language=en&format=json");var gJ=await gR.json();if(!gJ.results||!gJ.results.length){setErr("Location not found.");setSearching(false);return;}if(gJ.results.length===1){await fetchWeather(gJ.results[0]);}else{setSearchResults(gJ.results);setShowResults(true);setSearching(false);}}
@@ -4009,23 +4101,31 @@ catch(e){setErr("Could not load forecast.");setSearching(false);}
 async function fetchWeather(place){
 setSearching(true);setErr("");
 try{
-var wR=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+place.latitude+"&longitude="+place.longitude+"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,precipitation_hours,windspeed_10m_max,windgusts_10m_max,relative_humidity_2m_mean,surface_pressure_mean,weathercode,uv_index_max&hourly=temperature_2m,weathercode,precipitation_probability,precipitation,windspeed_10m,windgusts_10m,relativehumidity_2m,surface_pressure,cloudcover,uv_index,dewpoint_2m,visibility&minutely_15=precipitation,rain,showers,weather_code&past_minutely_15=4&forecast_minutely_15=8&timezone=auto&forecast_days=13");
+var wR=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+place.latitude+"&longitude="+place.longitude+"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,precipitation_hours,windspeed_10m_max,windgusts_10m_max,relative_humidity_2m_mean,surface_pressure_mean,pressure_msl_mean,weathercode,uv_index_max&hourly=temperature_2m,weathercode,precipitation_probability,precipitation,windspeed_10m,windgusts_10m,relativehumidity_2m,surface_pressure,pressure_msl,cloudcover,uv_index,dewpoint_2m,visibility&minutely_15=precipitation,rain,showers,weather_code&past_minutely_15=4&forecast_minutely_15=8&timezone=auto&forecast_days=13");
 var wJ=await wR.json();
 var days=wJ.daily,hrs=wJ.hourly;
 var data=days.time.map(function(t,i){
-var temp=Math.round(days.temperature_2m_max[i]);
+var rawTemp=Math.round(days.temperature_2m_max[i]);
 var code=days.weathercode[i]||0;
 var cloudEst=55,precipSum=days.precipitation_sum[i]||0;
 if(days.precipitation_probability_max[i]>=70)cloudEst=85;
 else if(days.precipitation_probability_max[i]>=40)cloudEst=60;
 else if(days.precipitation_probability_max[i]<=10)cloudEst=15;
+var pMsl=days.pressure_msl_mean?days.pressure_msl_mean[i]:null;
+var pSurf=days.surface_pressure_mean?days.surface_pressure_mean[i]:null;
+var pressureForBias=pMsl!=null?pMsl:(pSurf!=null?pSurf:1013);
+var humidityVal=Math.round(days.relative_humidity_2m_mean[i]||55);
+var nightLow=nightLowFromHourly(hrs,t);
+var bias=heatwaveBiasCorrection(rawTemp,nightLow,cloudEst,i,pressureForBias,humidityVal);
+var temp=Math.round(rawTemp+bias);
 var cond=condFromCode(code,temp,cloudEst,precipSum);
 var mph=Math.round((days.windspeed_10m_max[i]||0)*0.621371);
 var ds=new Date(t+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
 var uvMax=days.uv_index_max&&days.uv_index_max[i]!=null?Math.round(days.uv_index_max[i]):null;
-return{date:ds,temp:temp,low:Math.round(days.temperature_2m_min[i]),type:i<3?"confirmed":i<7?"near":"estimated",condition:cond,note:"Live forecast via Open-Meteo",wind:mph<5?"very light":mph<10?"light":mph<20?"moderate":"fresh",windMph:mph,gustMph:Math.round((days.windgusts_10m_max[i]||mph*1.3)*0.621371),rain:days.precipitation_probability_max[i]||0,humidity:Math.round(days.relative_humidity_2m_mean[i]||55),pressure:Math.round(days.surface_pressure_mean[i]||1013),rainMm:parseFloat((days.precipitation_sum[i]||0).toFixed(1)),rainHours:Math.round(days.precipitation_hours[i]||0),uvMax:uvMax};
+var pressureSelected=iUnits.pressureType==="surface"?pSurf:pMsl;
+return{date:ds,temp:temp,rawTemp:rawTemp,heatBias:bias,low:Math.round(days.temperature_2m_min[i]),type:i<3?"confirmed":i<7?"near":"estimated",condition:cond,note:"Live forecast via Open-Meteo",wind:mph<5?"very light":mph<10?"light":mph<20?"moderate":"fresh",windMph:mph,gustMph:Math.round((days.windgusts_10m_max[i]||mph*1.3)*0.621371),rain:days.precipitation_probability_max[i]||0,humidity:humidityVal,pressure:Math.round(pressureSelected!=null?pressureSelected:1013),pressureMsl:pMsl!=null?Math.round(pMsl):null,pressureSurface:pSurf!=null?Math.round(pSurf):null,rainMm:parseFloat((days.precipitation_sum[i]||0).toFixed(1)),rainHours:Math.round(days.precipitation_hours[i]||0),uvMax:uvMax};
 });
-setHr({times:hrs.time,temps:hrs.temperature_2m,codes:hrs.weathercode,windMph:hrs.windspeed_10m.map(function(v){return Math.round((v||0)*0.621371);}),gusts:hrs.windgusts_10m.map(function(v){return Math.round((v||0)*0.621371);}),rain:hrs.precipitation_probability,rainMm:hrs.precipitation,humidity:hrs.relativehumidity_2m,pressure:hrs.surface_pressure,cloud:hrs.cloudcover,uv:hrs.uv_index,dewpoint:hrs.dewpoint_2m,vis:hrs.visibility});
+setHr({times:hrs.time,temps:hrs.temperature_2m,codes:hrs.weathercode,windMph:hrs.windspeed_10m.map(function(v){return Math.round((v||0)*0.621371);}),gusts:hrs.windgusts_10m.map(function(v){return Math.round((v||0)*0.621371);}),rain:hrs.precipitation_probability,rainMm:hrs.precipitation,humidity:hrs.relativehumidity_2m,pressure:iUnits.pressureType==="surface"?hrs.surface_pressure:hrs.pressure_msl,pressureMsl:hrs.pressure_msl,pressureSurface:hrs.surface_pressure,cloud:hrs.cloudcover,uv:hrs.uv_index,dewpoint:hrs.dewpoint_2m,vis:hrs.visibility});
 if(wJ.minutely_15&&wJ.minutely_15.time){setM15({times:wJ.minutely_15.time,precip:wJ.minutely_15.precipitation,rain:wJ.minutely_15.rain,showers:wJ.minutely_15.showers,codes:wJ.minutely_15.weather_code});}else{setM15(null);}
 setFd(data);
 setLat(place.latitude);setLon(place.longitude);
