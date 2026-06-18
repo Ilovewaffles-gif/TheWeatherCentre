@@ -136,72 +136,113 @@ function sunFeel(t,m,h,c){return Math.round(t+condBonus(c,t,false)+humBonus(h)+w
 function shadeFeel(t,m,h,c){return Math.round(t+condBonus(c,t,true)+humBonus(h)+windBonus(m));}
 function hasSun(c){return c.includes("☀")||c.includes("🌡")||c.includes("🌤")||c.includes("⛅");}
 
-// ── Heatwave Underestimation Bias Correction ──────────────────────────────
-// During blocking-pattern UK heat events, NWP models systematically underestimate
-// daily max temps. Contributing factors: warm overnight lows (reduced nocturnal
-// cooling), low cloud cover (more solar heating than modelled), high pressure
-// (suppressed convective mixing), low humidity (continental/dry air advection),
-// and increasing model uncertainty with lead time. Correction only applies when
-// conditions actually look heatwave-prone — it does nothing on a normal day.
-function heatwaveBiasCorrection(temp,nightLow,cloudPct,leadDays,pressure,humidity){
-  if(temp<22)return 0; // bias only kicks in near/above heatwave-relevant temps
-  var corr=0;
-  // Warm night contribution: a night that didn't cool much below ~16C signals
-  // an already-warm air mass primed for a hotter-than-modelled day.
-  if(nightLow!=null){
-    if(nightLow>=20)corr+=0.7;
-    else if(nightLow>=18)corr+=0.5;
-    else if(nightLow>=16)corr+=0.3;
-    else if(nightLow>=14)corr+=0.1;
-  }
-  // Cloud cover: clear skies mean more direct solar heating than a model with
-  // even a slight positive cloud bias would suggest.
-  if(cloudPct!=null){
-    if(cloudPct<=15)corr+=0.6;
-    else if(cloudPct<=30)corr+=0.4;
-    else if(cloudPct<=45)corr+=0.2;
-  }
-  // Pressure: strong high pressure (blocking) suppresses convective cooling
-  // and vertical mixing, letting surface temps run hotter than modelled.
-  if(pressure!=null){
-    if(pressure>=1025)corr+=0.5;
-    else if(pressure>=1020)corr+=0.3;
-    else if(pressure>=1015)corr+=0.1;
-  }
-  // Humidity: lower relative humidity often indicates continental/dry air
-  // advection typical of UK heatwave setups, which models can underplay.
-  if(humidity!=null){
-    if(humidity<=35)corr+=0.4;
-    else if(humidity<=45)corr+=0.2;
-  }
-  // Lead time: forecast skill degrades further out, so scale the correction
-  // up gradually for less-certain days (model tends to "round down" extremes
-  // more aggressively the further out it forecasts).
-  var leadMult=1;
-  if(leadDays>=7)leadMult=1.5;
-  else if(leadDays>=4)leadMult=1.25;
-  else if(leadDays>=2)leadMult=1.1;
-  corr=corr*leadMult;
-  // Cap the correction — even in strong setups, don't run away with it.
-  if(corr>2.5)corr=2.5;
-  return Math.round(corr*10)/10;
+// Estimate cloud cover % from the condition emoji, mirroring the bucket logic used
+// elsewhere for synthetic hourly data (see buildHourly fallback branch).
+function cloudFromCond(c){
+  if(c.includes("⛈"))return 90;
+  if(c.includes("🌧️🌧️"))return 85;
+  if(c.includes("🌧"))return 80;
+  if(c.includes("🌦"))return 45;
+  if(c.includes("💧"))return 65;
+  if(c.includes("❄"))return 85;
+  if(c.includes("🌫"))return 75;
+  if(c.includes("☁"))return 85;
+  if(c.includes("⛅"))return 55;
+  if(c.includes("🌤"))return 30;
+  if(c.includes("🌡")||c.includes("☀"))return 10;
+  return 50;
 }
-function nightLowFromHourly(hrs,dayDateStr){
-  // hrs.time is ISO strings, hrs.temps parallel array. We want hours 0-5 of
-  // the given calendar day, which represent the tail of the overnight low
-  // before that day's daytime heating begins.
-  if(!hrs||!hrs.time||!hrs.temps)return null;
-  var vals=[];
-  for(var i=0;i<hrs.time.length;i++){
-    var t=hrs.time[i];
-    if(t.indexOf(dayDateStr)===0){
-      var hh=parseInt(t.substring(11,13),10);
-      if(hh>=0&&hh<=5)vals.push(hrs.temps[i]);
-    }
+
+// Heatwave underestimation system.
+// Forecast models (and the simple max-temp figure shown day-to-day) tend to
+// undercook peak heat in several well-documented ways:
+//  - Clear/low cloud cover lets in more solar radiation than a "typical" hot day
+//  - Warm overnight lows ("tropical nights") mean less night-time cooling, so heat
+//    builds cumulatively over consecutive days (heat dome / urban heat island effect)
+//  - High & rising surface pressure often marks blocking highs ("heat domes") which
+//    models can under-resolve, especially several days out
+//  - Forecast confidence falls the further out you go — days 7+ are most at risk
+//    of underestimating an emerging heatwave because models haven't "seen" the
+//    blocking pattern lock in yet
+//  - Low humidity (dry heat) lets daytime temps run hotter than humid heat of the
+//    same nominal value, and dry-heat extremes are historically under-forecast
+// This does not replace the official max temp — it estimates how many extra
+// degrees of caution to apply, plus a 0-100 underestimation risk score.
+function heatwaveUnderestimate(day,dayIndex,prevDay){
+  if(!day||day.temp<24){
+    return {score:0,extraDegrees:0,trueFeelHigh:day?day.temp:0,level:"none",factors:[],summary:"No heatwave underestimation risk — temperatures are below the threshold where this applies."};
   }
-  if(vals.length===0)return null;
-  return Math.min.apply(null,vals);
+  var cloud=cloudFromCond(day.condition);
+  var factors=[];
+  var score=0;
+
+  // Base heat magnitude — hotter starting points have more room to be underestimated
+  var baseScore=day.temp>=38?22:day.temp>=34?16:day.temp>=30?10:day.temp>=27?5:2;
+  score+=baseScore;
+
+  // Cloud cover: clear skies = more underestimation risk (extra solar loading the
+  // single max-temp figure doesn't capture)
+  var cloudPts=0;
+  if(cloud<=15){cloudPts=18;factors.push({icon:"☀️",label:"Clear skies",detail:cloud+"% cloud — near-unbroken sun adds extra solar heating the forecast max may not fully capture.",pts:cloudPts});}
+  else if(cloud<=35){cloudPts=11;factors.push({icon:"🌤️",label:"Mostly clear",detail:cloud+"% cloud — still high solar loading through the day.",pts:cloudPts});}
+  else if(cloud<=60){cloudPts=4;factors.push({icon:"⛅",label:"Partly cloudy",detail:cloud+"% cloud — some moderating effect on peak heat.",pts:cloudPts});}
+  else{cloudPts=0;}
+  score+=cloudPts;
+
+  // Night temperatures: warm nights mean less radiative cooling, so heat
+  // compounds day-on-day rather than resetting
+  var nightPts=0;
+  if(day.low>=22){nightPts=16;factors.push({icon:"🌙",label:"Very warm night",detail:"Overnight low "+day.low+"°C — minimal cooling lets heat carry over and build into the next day.",pts:nightPts});}
+  else if(day.low>=18){nightPts=10;factors.push({icon:"🌙",label:"Warm night",detail:"Overnight low "+day.low+"°C — reduced overnight cooling, some heat carryover likely.",pts:nightPts});}
+  else if(day.low>=14){nightPts=4;factors.push({icon:"🌙",label:"Mild night",detail:"Overnight low "+day.low+"°C — modest cooling.",pts:nightPts});}
+  score+=nightPts;
+
+  // Consecutive hot days compound the underestimation (ground, buildings and
+  // urban surfaces retain heat — each extra hot day adds to the bias)
+  var streakPts=0;
+  if(prevDay&&prevDay.temp>=27&&day.temp>=27){
+    streakPts=9;
+    factors.push({icon:"🔥",label:"Heat building day-on-day",detail:"Yesterday's high was "+prevDay.temp+"°C — consecutive hot days let ground and urban surfaces retain heat, often pushing the next day's true peak above forecast.",pts:streakPts});
+  }
+  score+=streakPts;
+
+  // Pressure: a high and/or rising surface pressure often signals a blocking
+  // high ("heat dome") which models can under-resolve, especially further out
+  var presPts=0;
+  if(day.pressure>=1025){presPts=14;factors.push({icon:"📊",label:"Strong high pressure",detail:day.pressure+"mb — strong blocking highs ('heat domes') trap heat and are a classic source of forecast heat underestimation.",pts:presPts});}
+  else if(day.pressure>=1018){presPts=7;factors.push({icon:"📊",label:"Elevated pressure",detail:day.pressure+"mb — settled, high-pressure conditions favour stronger-than-forecast daytime heating.",pts:presPts});}
+  score+=presPts;
+
+  // Humidity: low humidity (dry heat) lets daytime temperature run hotter,
+  // since less energy goes into evaporation — dry extremes are notoriously
+  // under-forecast versus their eventual observed peak
+  var humPts=0;
+  if(day.humidity<=30){humPts=10;factors.push({icon:"🏜️",label:"Low humidity (dry heat)",detail:day.humidity+"% humidity — dry air lets surface temperatures run hotter than forecast since less energy is lost to evaporation.",pts:humPts});}
+  else if(day.humidity<=45){humPts=5;factors.push({icon:"🏜️",label:"Moderate-low humidity",detail:day.humidity+"% humidity — some extra daytime heating likely versus a humid equivalent.",pts:humPts});}
+  score+=humPts;
+
+  // Days away: forecast confidence falls with lead time, and heat domes in
+  // particular often aren't "locked in" by models until a few days out
+  var leadPts=0;
+  if(dayIndex>=7){leadPts=14;factors.push({icon:"📅",label:"Long lead time",detail:"Day "+(dayIndex+1)+" of the outlook — beyond a week out, models are most prone to underestimating an emerging heatwave until the pattern locks in.",pts:leadPts});}
+  else if(dayIndex>=4){leadPts=8;factors.push({icon:"📅",label:"Medium lead time",detail:"Day "+(dayIndex+1)+" of the outlook — near-term estimates can still shift upward as the event approaches.",pts:leadPts});}
+  else if(dayIndex>=2){leadPts=3;factors.push({icon:"📅",label:"Short lead time",detail:"Day "+(dayIndex+1)+" of the outlook — confidence is fairly high but small upward revisions are still possible.",pts:leadPts});}
+  score+=leadPts;
+
+  score=Math.max(0,Math.min(100,Math.round(score)));
+  var level=score>=65?"severe":score>=45?"high":score>=25?"moderate":score>=10?"low":"minimal";
+  var extraDegrees=Math.round((score/100)*7*10)/10; // up to ~7°C of extra caution at max score
+  var trueFeelHigh=Math.round((day.temp+extraDegrees)*10)/10;
+  var summaryMap={
+    severe:"Multiple strong signals suggest the forecast high could be a significant underestimate — treat this as a likely heatwave day even if the headline figure looks moderate.",
+    high:"Several signals point to the forecast running cooler than what's likely to actually happen — plan for hotter than the headline figure.",
+    moderate:"Some signals suggest the real peak could run a little hotter than forecast.",
+    low:"Minor underestimation risk — the forecast high is probably close to accurate.",
+    minimal:"Low underestimation risk — conditions don't favour the forecast running cool."
+  };
+  return {score:score,extraDegrees:extraDegrees,trueFeelHigh:trueFeelHigh,level:level,factors:factors.sort(function(a,b){return b.pts-a.pts;}),summary:summaryMap[level]};
 }
+function heatwaveLevelColor(level){return level==="severe"?"#ff1500":level==="high"?"#ff6600":level==="moderate"?"#ffaa00":level==="low"?"#ffdd66":"#4a9fd4";}
 
 function condFromCode(code,temp,cloudPct,precipMm){
   var cloud=cloudPct!=null?cloudPct:50;
@@ -645,7 +686,7 @@ React.createElement('div', { style: {position:"fixed",top:0,left:0,right:0,botto
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Temperature"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "C", cur: units.temp, set: function(v){setUnits(function(u){return Object.assign({},u,{temp:v});});}}, "C"), React.createElement(Btn, { val: "F", cur: units.temp, set: function(v){setUnits(function(u){return Object.assign({},u,{temp:v});});}}, "F")))
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Wind Speed" ), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mph", cur: units.speed, set: function(v){setUnits(function(u){return Object.assign({},u,{speed:v});});}}, "mph"), React.createElement(Btn, { val: "kmh", cur: units.speed, set: function(v){setUnits(function(u){return Object.assign({},u,{speed:v});});}}, "km/h")))
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Precipitation"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mm", cur: units.rain, set: function(v){setUnits(function(u){return Object.assign({},u,{rain:v});});}}, "mm"), React.createElement(Btn, { val: "in", cur: units.rain, set: function(v){setUnits(function(u){return Object.assign({},u,{rain:v});});}}, "in")))
-, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0"}}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Pressure"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mbar", cur: units.pressure, set: function(v){setUnits(function(u){return Object.assign({},u,{pressure:v});});}}, "mbar"), React.createElement(Btn, { val: "pa", cur: units.pressure, set: function(v){setUnits(function(u){return Object.assign({},u,{pressure:v});});}}, "Pa"), React.createElement(Btn, { val: "bar", cur: units.pressure, set: function(v){setUnits(function(u){return Object.assign({},u,{pressure:v});});}}, "bar"), React.createElement(Btn, { val: "ba", cur: units.pressure, set: function(v){setUnits(function(u){return Object.assign({},u,{pressure:v});});}}, "ba")))
+, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0"}}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Pressure (Sea Level)"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mbar", cur: units.pressure, set: function(v){setUnits(function(u){return Object.assign({},u,{pressure:v});});}}, "mbar"), React.createElement(Btn, { val: "pa", cur: units.pressure, set: function(v){setUnits(function(u){return Object.assign({},u,{pressure:v});});}}, "Pa"), React.createElement(Btn, { val: "bar", cur: units.pressure, set: function(v){setUnits(function(u){return Object.assign({},u,{pressure:v});});}}, "bar"), React.createElement(Btn, { val: "ba", cur: units.pressure, set: function(v){setUnits(function(u){return Object.assign({},u,{pressure:v});});}}, "ba")))
 )
 )
 );
@@ -686,7 +727,7 @@ React.createElement('button', { key: item.id, onClick: function(){setActivePage(
 );
 }
 function DayCard(props){
-var d=props.d,i=props.i,sel=props.sel,setSel=props.setSel,u=props.u,detailView=props.detailView,setDetailView=props.setDetailView;
+var d=props.d,i=props.i,prevDay=props.prevDay,sel=props.sel,setSel=props.setSel,u=props.u,detailView=props.detailView,setDetailView=props.setDetailView;
 var color=tc(d.temp),isC=d.type==="confirmed",isN=d.type==="near",isSel=sel===i;
 var shade=shadeFeel(d.temp,d.windMph,d.humidity,d.condition);
 var sun=sunFeel(d.temp,d.windMph,d.humidity,d.condition);
@@ -694,8 +735,10 @@ var sunny=hasSun(d.condition);
 var storm=d.humidity>=50&&d.temp>=28;
 var cat=windCat(d.windMph);
 var periods=getDayPeriods(d);
+var hw=heatwaveUnderestimate(d,i,prevDay);
+var hwCol=heatwaveLevelColor(hw.level);
 return (
-React.createElement('div', { onClick: function(){setSel(sel===i?null:i);}, style: {background:isSel?bgc(d.temp):"rgba(255,255,255,0.03)",border:"1px solid "+(isC?color+"66":isN?color+"44":"rgba(255,255,255,0.08)"),borderRadius:12,padding:"13px 11px 11px",cursor:"pointer",transition:"all 0.2s",transform:isSel?"scale(1.03)":"scale(1)",boxShadow:isSel?"0 6px 24px "+color+"28":"none"}}
+React.createElement('div', { id:"daycard-"+i, onClick: function(){setSel(sel===i?null:i);}, style: {background:isSel?bgc(d.temp):"rgba(255,255,255,0.03)",border:"1px solid "+(isC?color+"66":isN?color+"44":"rgba(255,255,255,0.08)"),borderRadius:12,padding:"13px 11px 11px",cursor:"pointer",transition:"all 0.2s",transform:isSel?"scale(1.03)":"scale(1)",boxShadow:isSel?"0 6px 24px "+color+"28":"none"}}
 , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7}}
 , React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,color:"#bbb",letterSpacing:1,textTransform:"uppercase",fontWeight:"bold"}}, d.date.split(" ").slice(0,2).join(" "))
@@ -709,6 +752,10 @@ React.createElement('div', { onClick: function(){setSel(sel===i?null:i);}, style
 , React.createElement('div', { style: {display:"flex",alignItems:"baseline",gap:3,marginBottom:8}}
 , React.createElement('span', { style: {fontSize:30,fontWeight:"bold",color:color,lineHeight:1}}, fmtTemp(d.temp,u.temp))
 , React.createElement('span', { style: {fontSize:11,color:"#5a7a5a",marginLeft:5}}, "/ "+fmtTemp(d.low,u.temp))
+)
+, hw.level!=="none"&&hw.level!=="minimal"&&React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",background:hwCol+"18",border:"1px solid "+hwCol+"44",borderRadius:8,padding:"5px 8px",marginBottom:8}}
+, React.createElement('span', { style: {fontSize:10,color:hwCol,fontWeight:"bold"}}, "🔥 ", hw.level==="severe"?"Severe":hw.level==="high"?"High":"Moderate", " underestimate risk")
+, React.createElement('span', { style: {fontSize:11,color:hwCol,fontWeight:"bold"}}, "up to ", fmtTemp(hw.trueFeelHigh,u.temp))
 )
 , React.createElement('div', { style: {background:"rgba(0,0,0,0.28)",borderRadius:8,padding:"7px 9px",marginBottom:8,display:"flex",flexDirection:"column",gap:4}}
 , sunny&&React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center"}}, React.createElement('span', { style: {fontSize:11,color:"#ffd060"}}, "In sun" ), React.createElement('span', { style: {fontSize:14,fontWeight:"bold",color:tc(sun)}}, fmtTemp(sun,u.temp)))
@@ -730,6 +777,7 @@ React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",marginTop:6,bor
 , React.createElement('div', { style: {display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}
 , React.createElement('button', { onClick: function(e){e.stopPropagation();setDetailView("daily");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:detailView==="daily"?"#ff7700":"rgba(255,255,255,0.07)",color:detailView==="daily"?"#fff":"#aaa",border:"none",cursor:"pointer"}}, "Daily Summary" )
 , React.createElement('button', { onClick: function(e){e.stopPropagation();setDetailView("periods");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:detailView==="periods"?"#ff7700":"rgba(255,255,255,0.07)",color:detailView==="periods"?"#fff":"#aaa",border:"none",cursor:"pointer"}}, "Morning / Afternoon / Evening" )
+, hw.level!=="none"&&React.createElement('button', { onClick: function(e){e.stopPropagation();setDetailView("heatwave");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:detailView==="heatwave"?hwCol:"rgba(255,255,255,0.07)",color:detailView==="heatwave"?"#1a0a00":"#aaa",border:"none",cursor:"pointer"}}, "🔥 Heat Risk" )
 )
 , detailView==="daily"&&(
 React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:3}}
@@ -751,6 +799,16 @@ return React.createElement('div', { key: pk, style: {background:"rgba(0,0,0,0.22
 , React.createElement('div', { style: {fontSize:10,color:"#888",marginTop:1}}, p.note)
 );
 })
+)
+)
+, detailView==="heatwave"&&hw.level!=="none"&&(
+React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:8}}
+, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",background:hwCol+"14",border:"1px solid "+hwCol+"44",borderRadius:8,padding:"7px 9px"}}
+, React.createElement('span', { style: {fontSize:11,color:hwCol,fontWeight:"bold"}}, hw.level.charAt(0).toUpperCase()+hw.level.slice(1), " risk · score ", hw.score, "/100")
+, React.createElement('span', { style: {fontSize:12,color:hwCol,fontWeight:"bold"}}, "Plan for up to ", fmtTemp(hw.trueFeelHigh,u.temp))
+)
+, React.createElement('div', { style: {fontSize:10,color:"#999",lineHeight:1.6}}, hw.summary)
+, hw.factors.length>0&&React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:5}}, hw.factors.map(function(f,fi){return React.createElement('div', { key: fi, style: {display:"flex",gap:7,alignItems:"flex-start"}}, React.createElement('span', { style: {fontSize:13,flexShrink:0}}, f.icon), React.createElement('div', {}, React.createElement('span', { style: {fontSize:10,color:"#ccc",fontWeight:"bold"}}, f.label), React.createElement('div', { style: {fontSize:10,color:"#777",lineHeight:1.5}}, f.detail)));}))
 )
 )
 , isC&&React.createElement('div', { style: {color:"#ff7700",marginTop:5,fontSize:10}}, "Confirmed forecast" )
@@ -831,7 +889,7 @@ var loading=useState(true);var iLoading=loading[0];var setLoading=loading[1];
 useEffect(function(){
 if(!lat||!lon){setLoading(false);return;}
 setLoading(true);
-fetch("https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,windgusts_10m,relativehumidity_2m,surface_pressure,cloudcover,uv_index,precipitation,is_day&timezone=auto")
+fetch("https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,windgusts_10m,relativehumidity_2m,pressure_msl,cloudcover,uv_index,precipitation,is_day&timezone=auto")
 .then(function(r){return r.json();})
 .then(function(j){
 var c=j.current;
@@ -847,7 +905,7 @@ var mph=Math.round((c.windspeed_10m||0)*0.621371);
 var gust=Math.round((c.windgusts_10m||mph*1.3)*0.621371);
 var uv=Math.round(c.uv_index||0);
 var hum=Math.round(c.relativehumidity_2m||50);
-var pres=Math.round(c.surface_pressure||1013);
+var pres=Math.round(c.pressure_msl||1013);
 var fl=Math.round(c.apparent_temperature||temp);
 var hi=null;
 if(hasSun(cond)&&temp>=27){hi=sunFeel(temp,mph,hum,cond);}
@@ -876,10 +934,29 @@ React.createElement('div', { style: {background:"linear-gradient(135deg,rgba(255
 , iCur.strikeDensity!=null&&(React.createElement('div', { style: {background:"rgba(255,200,0,0.1)",border:"1px solid rgba(255,200,0,0.3)",borderRadius:12,padding:"10px 14px"}}, React.createElement('div', { style: {fontSize:9,color:"#ffcc00",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}, "Est. Strike Density"), React.createElement('div', { style: {fontSize:22,fontWeight:"bold",color:"#ffcc00"}}, iCur.strikeDensity, " ", React.createElement('span', { style: {fontSize:11,color:"#888"}}, "fl/km²")), React.createElement('div', { style: {fontSize:10,color:"#888"}}, "⚠️ Stay indoors")))
 )
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:8}}
-, [{label:"Wind",val:fmtSpd(iCur.windMph,u.speed),sub:"Gusts "+fmtSpd(iCur.gustMph,u.speed),col:wc(iCur.windMph),icon:"💨"},{label:"Humidity",val:iCur.humidity+"%",sub:"Dew "+fmtTemp(Math.round(iCur.temp-((100-iCur.humidity)/5)),u.temp),col:hc(iCur.humidity),icon:"💧"},{label:"Pressure",val:fmtPres(iCur.pressure,u.pressure),sub:iCur.pressure>=1020?"High":iCur.pressure>=1010?"Normal":"Low",col:pc(iCur.pressure),icon:"📊"},{label:"UV Index",val:iCur.uv+" — "+uvLbl(iCur.uv),sub:uvProtect(iCur.uv),col:uvCol(iCur.uv),icon:"☀️"},{label:"Cloud Cover",val:iCur.cloud+"%",sub:iCur.cloud<20?"Clear sky":iCur.cloud<50?"Partly cloudy":"Overcast",col:"#aaa",icon:"☁️"},{label:"Rainfall",val:iCur.precip>0?fmtRain(iCur.precip,u.rain):"None",sub:"Current hour",col:rc(iCur.precip>0?80:0),icon:"🌧️"}].map(function(item,i){
+, [{label:"Wind",val:fmtSpd(iCur.windMph,u.speed),sub:"Gusts "+fmtSpd(iCur.gustMph,u.speed),col:wc(iCur.windMph),icon:"💨"},{label:"Humidity",val:iCur.humidity+"%",sub:"Dew "+fmtTemp(Math.round(iCur.temp-((100-iCur.humidity)/5)),u.temp),col:hc(iCur.humidity),icon:"💧"},{label:"Pressure (MSL)",val:fmtPres(iCur.pressure,u.pressure),sub:iCur.pressure>=1020?"High":iCur.pressure>=1010?"Normal":"Low",col:pc(iCur.pressure),icon:"📊"},{label:"UV Index",val:iCur.uv+" — "+uvLbl(iCur.uv),sub:uvProtect(iCur.uv),col:uvCol(iCur.uv),icon:"☀️"},{label:"Cloud Cover",val:iCur.cloud+"%",sub:iCur.cloud<20?"Clear sky":iCur.cloud<50?"Partly cloudy":"Overcast",col:"#aaa",icon:"☁️"},{label:"Rainfall",val:iCur.precip>0?fmtRain(iCur.precip,u.rain):"None",sub:"Current hour",col:rc(iCur.precip>0?80:0),icon:"🌧️"}].map(function(item,i){
 return React.createElement('div', { key: i, style: {background:"rgba(0,0,0,0.25)",borderRadius:10,padding:"8px 10px"}}, React.createElement('div', { style: {fontSize:10,color:"#555",marginBottom:3}}, item.icon, " ", item.label), React.createElement('div', { style: {fontSize:13,fontWeight:"bold",color:item.col,lineHeight:1.2}}, item.val), React.createElement('div', { style: {fontSize:9,color:"#555",marginTop:2}}, item.sub));
 })
 )
+)
+);
+}
+function HeatwaveSummaryBanner(props){
+var forecastData=props.forecastData,u=props.u,onJump=props.onJump;
+var ranked=forecastData.map(function(d,i){return {d:d,i:i,hw:heatwaveUnderestimate(d,i,i>0?forecastData[i-1]:null)};}).filter(function(r){return r.hw.level==="high"||r.hw.level==="severe";}).sort(function(a,b){return b.hw.score-a.hw.score;});
+if(ranked.length===0)return null;
+var top=ranked[0];
+var col=heatwaveLevelColor(top.hw.level);
+return (
+React.createElement('div', { onClick: function(){onJump&&onJump(top.i);}, style: {background:"linear-gradient(90deg,"+col+"22 0%,rgba(255,119,0,0.04) 100%)",border:"1px solid "+col+"55",borderRadius:14,padding:"14px 16px",marginBottom:20,cursor:onJump?"pointer":"default"}}
+, React.createElement('div', { style: {display:"flex",alignItems:"center",gap:10,marginBottom:6,flexWrap:"wrap"}}
+, React.createElement('span', { style: {fontSize:20}}, "🔥")
+, React.createElement('span', { style: {fontSize:11,letterSpacing:2,color:col,textTransform:"uppercase",fontWeight:"bold"}}, "Heatwave Underestimation Warning")
+, React.createElement('span', { style: {fontSize:11,color:"#888",marginLeft:"auto"}}, ranked.length, " day", ranked.length>1?"s":"", " flagged")
+)
+, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8",marginBottom:4}}, top.d.date, " — forecast high ", React.createElement('b', {}, fmtTemp(top.d.temp,u.temp)), " could realistically reach ", React.createElement('b', { style: {color:col}}, fmtTemp(top.hw.trueFeelHigh,u.temp)))
+, React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",lineHeight:1.6}}, top.hw.summary)
+, onJump&&React.createElement('div', { style: {fontSize:10,color:col,marginTop:6}}, "Tap to view full breakdown →")
 )
 );
 }
@@ -895,6 +972,7 @@ var panel={background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,25
 return (
 React.createElement('div', {}
 , React.createElement(CurrentWeather, { forecastData: forecastData, hourlyRaw: hourlyRaw, locationName: locationName, u: u, lat: lat, lon: lon})
+, React.createElement(HeatwaveSummaryBanner, { forecastData: forecastData, u: u, onJump: function(idx){setSel(idx);setDetailV("heatwave");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}})
 , React.createElement('div', { style: panel}
 , React.createElement('div', { style: {display:"flex",gap:5,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}
 , tabs.map(function(t){var on=iGraph===t.id;return React.createElement('button', { key: t.id, onClick: function(){setGraph(t.id);setSel(null);}, style: {padding:"5px 10px",borderRadius:20,border:"1px solid",borderColor:on?"#ff7700":"rgba(255,255,255,0.12)",background:on?"rgba(255,119,0,0.18)":"rgba(255,255,255,0.03)",color:on?"#ffaa44":"#888",fontSize:11,cursor:"pointer"}}, t.label);})
@@ -911,12 +989,12 @@ React.createElement('div', {}
 , iGraph==="wind"&&React.createElement('div', { style: {display:"flex",gap:8,marginTop:5,fontSize:9,color:"#777",flexWrap:"wrap"}}, [["<5","V.Light"],["5-10","Light"],["10-20","Mod"],["20-30","Strong"],["30+","Gale+"]].map(function(p){return React.createElement('span', { key: p[0]}, React.createElement('span', { style: {color:"#ffcc88"}}, p[0]), " ", p[1]);}))
 )
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))",gap:9}}
-, forecastData.map(function(d,i){return React.createElement(DayCard, { key: i, d: d, i: i, sel: iSel, setSel: setSel, u: u, detailView: iDetailV, setDetailView: setDetailV});})
+, forecastData.map(function(d,i){return React.createElement(DayCard, { key: i, d: d, i: i, prevDay: i>0?forecastData[i-1]:null, sel: iSel, setSel: setSel, u: u, detailView: iDetailV, setDetailView: setDetailV});})
 )
 , React.createElement('div', { style: {marginTop:28,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"18px"}}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:4,color:"#ff7700",textTransform:"uppercase",marginBottom:14}}, "About This Forecast")
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:14}}
-, [{icon:"📊",title:"13-Day Outlook",text:"Forecast covers 13 days. The first 3 days are high confidence. Days 4-7 are near-term estimates. Beyond day 7, treat as indicative only."},{icon:"🌡️",title:"Feel-Like Temps",text:"Feels-like temperatures account for wind chill, humidity and solar radiation. In sun vs shade can differ by 10°C or more on hot days."},{icon:"💧",title:"Rainfall Data",text:"Rain chance is the probability of any measurable rainfall. The mm figure is the expected total if rain falls. Both are shown for each day."},{icon:"💨",title:"Wind Forecasts",text:"Wind speeds are 10m surface winds. Gusts can be significantly higher. Strong Breeze (20-30 mph) can affect outdoor activities."},{icon:"🌍",title:"Data Source",text:"Forecasts are powered by Open-Meteo, a free and open weather API using ECMWF and other model data updated hourly."},{icon:"⚡",title:"Storm Risk",text:"Storm risk is flagged when temperature exceeds 28°C and humidity exceeds 50%, creating convective instability conditions."}].map(function(r,i){return React.createElement('div', { key: i, style: {display:"flex",gap:12}}, React.createElement('span', { style: {fontSize:22,flexShrink:0}}, r.icon), React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8",fontWeight:"bold",marginBottom:4}}, r.title), React.createElement('div', { style: {fontSize:12,color:"#7a6e5e",lineHeight:1.55}}, r.text)));})
+, [{icon:"📊",title:"13-Day Outlook",text:"Forecast covers 13 days. The first 3 days are high confidence. Days 4-7 are near-term estimates. Beyond day 7, treat as indicative only."},{icon:"🌡️",title:"Feel-Like Temps",text:"Feels-like temperatures account for wind chill, humidity and solar radiation. In sun vs shade can differ by 10°C or more on hot days."},{icon:"💧",title:"Rainfall Data",text:"Rain chance is the probability of any measurable rainfall. The mm figure is the expected total if rain falls. Both are shown for each day."},{icon:"💨",title:"Wind Forecasts",text:"Wind speeds are 10m surface winds. Gusts can be significantly higher. Strong Breeze (20-30 mph) can affect outdoor activities."},{icon:"🌍",title:"Data Source",text:"Forecasts are powered by Open-Meteo, a free and open weather API using ECMWF and other model data updated hourly."},{icon:"⚡",title:"Storm Risk",text:"Storm risk is flagged when temperature exceeds 28°C and humidity exceeds 50%, creating convective instability conditions."},{icon:"🔥",title:"Heatwave Underestimation",text:"Forecast highs of 24°C+ are checked against night temperatures, cloud cover, days-out lead time, pressure and humidity — factors that commonly cause forecasts to undercook real-world heat. Flagged days show how much hotter it could realistically get."}].map(function(r,i){return React.createElement('div', { key: i, style: {display:"flex",gap:12}}, React.createElement('span', { style: {fontSize:22,flexShrink:0}}, r.icon), React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8",fontWeight:"bold",marginBottom:4}}, r.title), React.createElement('div', { style: {fontSize:12,color:"#7a6e5e",lineHeight:1.55}}, r.text)));})
 )
 )
 )
@@ -930,6 +1008,7 @@ var data=forecastData.slice(0,10);
 return (
 React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:3,color:"#ff7700",textTransform:"uppercase",marginBottom:16}}, "14-Day Forecast")
+, React.createElement(HeatwaveSummaryBanner, { forecastData: forecastData, u: u, onJump: function(idx){if(idx<10){setSel(idx);setDv("heatwave");}}})
 , React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:8}}
 , data.map(function(d,i){
 var color=tc(d.temp),isC=d.type==="confirmed",isN=d.type==="near",isSel=iSel===i;
@@ -938,6 +1017,8 @@ var shade=shadeFeel(d.temp,d.windMph,d.humidity,d.condition);
 var sun=sunFeel(d.temp,d.windMph,d.humidity,d.condition);
 var sunny=hasSun(d.condition);
 var periods=getDayPeriods(d);
+var hw=heatwaveUnderestimate(d,i,i>0?forecastData[i-1]:null);
+var hwCol=heatwaveLevelColor(hw.level);
 return (
 React.createElement('div', { key: i, onClick: function(){setSel(iSel===i?null:i);}, style: {background:isSel?bgc(d.temp):"rgba(255,255,255,0.03)",border:"1px solid "+(isC?color+"55":isN?color+"33":"rgba(255,255,255,0.07)"),borderRadius:12,padding:"12px 14px",cursor:"pointer",transition:"all 0.2s"}}
 , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:10}}
@@ -948,6 +1029,7 @@ React.createElement('div', { key: i, onClick: function(){setSel(iSel===i?null:i)
 , React.createElement('div', { style: {flex:1,height:6,background:"rgba(255,255,255,0.06)",borderRadius:3,position:"relative",overflow:"hidden"}}, React.createElement('div', { style: {position:"absolute",left:bWL+"%",width:(bW-bWL)+"%",height:"100%",background:"linear-gradient(to right,#4a9fd4,"+color+")",borderRadius:3}}))
 , React.createElement('span', { style: {fontSize:13,fontWeight:"bold",color:color,width:38,flexShrink:0}}, fmtTemp(d.temp,u.temp))
 )
+, hw.level!=="none"&&hw.level!=="minimal"&&React.createElement('span', { style: {fontSize:12,flexShrink:0}, title:hw.level+" heat underestimation risk"}, "🔥")
 , React.createElement('div', { style: {display:"flex",gap:6,fontSize:10,flexShrink:0}}
 , React.createElement('span', { style: {color:rc(d.rain)}}, d.rain, "%")
 , React.createElement('span', { style: {color:pc(d.pressure)}}, fmtPres(d.pressure,u.pressure))
@@ -959,6 +1041,7 @@ React.createElement('div', { style: {marginTop:12,borderTop:"1px solid rgba(255,
 , React.createElement('div', { style: {display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}
 , React.createElement('button', { onClick: function(e){e.stopPropagation();setDv("daily");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:iDv==="daily"?"#ff7700":"rgba(255,255,255,0.07)",color:iDv==="daily"?"#fff":"#aaa",border:"none",cursor:"pointer"}}, "Daily Summary")
 , React.createElement('button', { onClick: function(e){e.stopPropagation();setDv("periods");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:iDv==="periods"?"#ff7700":"rgba(255,255,255,0.07)",color:iDv==="periods"?"#fff":"#aaa",border:"none",cursor:"pointer"}}, "Morning / Afternoon / Evening")
+, hw.level!=="none"&&React.createElement('button', { onClick: function(e){e.stopPropagation();setDv("heatwave");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:iDv==="heatwave"?hwCol:"rgba(255,255,255,0.07)",color:iDv==="heatwave"?"#1a0a00":"#aaa",border:"none",cursor:"pointer"}}, "🔥 Heat Risk")
 )
 , iDv==="daily"&&React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px 14px",fontSize:11,color:"#aaa"}}
 , sunny&&React.createElement('span', {}, "In sun: ", React.createElement('b', { style: {color:tc(sun)}}, fmtTemp(sun,u.temp)))
@@ -971,6 +1054,16 @@ React.createElement('div', { style: {marginTop:12,borderTop:"1px solid rgba(255,
 , React.createElement('span', { style: {fontSize:10}}, "Gusts: ", React.createElement('b', { style: {color:wc(d.gustMph)}}, fmtSpd(d.gustMph,u.speed)))
 )
 , iDv==="periods"&&React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:8}}, ["morning","afternoon","evening"].map(function(pk){var p=periods[pk];return React.createElement('div', { key: pk, style: {background:"rgba(0,0,0,0.22)",padding:"8px 10px",borderRadius:8,borderLeft:"3px solid "+tc(p.temp)}}, React.createElement('div', { style: {fontSize:11,color:"#ddd",marginBottom:3}}, p.time, " ", p.condition), React.createElement('div', { style: {display:"flex",justifyContent:"space-between",fontSize:12}}, React.createElement('b', { style: {color:tc(p.temp)}}, fmtTemp(p.temp,u.temp)), React.createElement('span', { style: {color:rc(p.rain)}}, p.rain, "% ", fmtRain(p.rainMm,u.rain))), React.createElement('div', { style: {fontSize:10,color:wc(p.windMph),marginTop:2}}, fmtSpd(p.windMph,u.speed)));}))
+, iDv==="heatwave"&&hw.level!=="none"&&(
+React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:8}}
+, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",background:hwCol+"14",border:"1px solid "+hwCol+"44",borderRadius:8,padding:"7px 9px",flexWrap:"wrap",gap:4}}
+, React.createElement('span', { style: {fontSize:11,color:hwCol,fontWeight:"bold"}}, hw.level.charAt(0).toUpperCase()+hw.level.slice(1), " risk · score ", hw.score, "/100")
+, React.createElement('span', { style: {fontSize:12,color:hwCol,fontWeight:"bold"}}, "Plan for up to ", fmtTemp(hw.trueFeelHigh,u.temp))
+)
+, React.createElement('div', { style: {fontSize:10,color:"#999",lineHeight:1.6}}, hw.summary)
+, hw.factors.length>0&&React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:5}}, hw.factors.map(function(f,fi){return React.createElement('div', { key: fi, style: {display:"flex",gap:7,alignItems:"flex-start"}}, React.createElement('span', { style: {fontSize:13,flexShrink:0}}, f.icon), React.createElement('div', {}, React.createElement('span', { style: {fontSize:10,color:"#ccc",fontWeight:"bold"}}, f.label), React.createElement('div', { style: {fontSize:10,color:"#777",lineHeight:1.5}}, f.detail)));}))
+)
+)
 , isC&&React.createElement('div', { style: {color:"#ff7700",marginTop:8,fontSize:10}}, "Confirmed forecast")
 , isN&&React.createElement('div', { style: {color:"#4a9fd4",marginTop:8,fontSize:10}}, "Near-term forecast")
 )
@@ -1054,7 +1147,7 @@ React.createElement('div', { style: {marginTop:14,borderTop:"1px solid rgba(255,
 , React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Gusts"), React.createElement('div', { style: {color:wc(h.gustMph),fontWeight:"bold"}}, fmtSpd(h.gustMph,u.speed)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, windCat(h.gustMph)))
 , React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Rain Chance"), React.createElement('div', { style: {color:rc(h.rainChance),fontWeight:"bold"}}, h.rainChance, "%"), h.rainMm>0&&React.createElement('div', { style: {fontSize:10,color:rc(h.rainChance)}}, fmtRain(h.rainMm,u.rain), " expected"))
 , React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Humidity"), React.createElement('div', { style: {color:hc(h.humidity),fontWeight:"bold"}}, h.humidity, "%"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, "Dew ", fmtTemp(h.dewPoint,u.temp)))
-, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Pressure"), React.createElement('div', { style: {color:pc(h.pressure),fontWeight:"bold"}}, fmtPres(h.pressure,u.pressure)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, h.pressure>=1020?"High":h.pressure>=1010?"Normal":"Low"))
+, React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Pressure (MSL)"), React.createElement('div', { style: {color:pc(h.pressure),fontWeight:"bold"}}, fmtPres(h.pressure,u.pressure)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, h.pressure>=1020?"High":h.pressure>=1010?"Normal":"Low"))
 , React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "UV Index"), React.createElement('div', { style: {color:uvCol(h.uv),fontWeight:"bold"}}, h.uv, " — ", uvLbl(h.uv)), React.createElement('div', { style: {fontSize:10,color:"#666"}}, uvProtect(h.uv)))
 , React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Cloud Cover"), React.createElement('div', { style: {color:"#aaa",fontWeight:"bold"}}, h.cloud, "%"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, h.cloud<20?"Clear":h.cloud<40?"Mostly clear":h.cloud<70?"Partly cloudy":"Overcast"))
 , React.createElement('div', {}, React.createElement('div', { style: {fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}, "Visibility"), React.createElement('div', { style: {color:"#aabbcc",fontWeight:"bold",fontSize:11}}, h.visibility))
@@ -1501,8 +1594,7 @@ React.createElement('div', { style: {position:"fixed",top:0,left:0,right:0,botto
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Temperature"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "C", cur: units.temp, set: function(v){handleSaveUnits(Object.assign({},units,{temp:v}));}},"C"), React.createElement(Btn, { val: "F", cur: units.temp, set: function(v){handleSaveUnits(Object.assign({},units,{temp:v}));}},"F")))
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Wind Speed"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mph", cur: units.speed, set: function(v){handleSaveUnits(Object.assign({},units,{speed:v}));}},"mph"), React.createElement(Btn, { val: "kmh", cur: units.speed, set: function(v){handleSaveUnits(Object.assign({},units,{speed:v}));}},"km/h")))
 , React.createElement('div', { style: row}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Precipitation"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mm", cur: units.rain, set: function(v){handleSaveUnits(Object.assign({},units,{rain:v}));}},"mm"), React.createElement(Btn, { val: "in", cur: units.rain, set: function(v){handleSaveUnits(Object.assign({},units,{rain:v}));}},"in")))
-, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0"}}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Pressure"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mbar", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"mbar"), React.createElement(Btn, { val: "pa", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"Pa"), React.createElement(Btn, { val: "bar", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"bar")))
-, React.createElement('div', { style: row}, React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, "Pressure Forecast"), React.createElement('div', { style: {fontSize:10,color:"#666"}}, "Air pressure (sea-level) or local surface pressure")), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "msl", cur: units.pressureType||"msl", set: function(v){handleSaveUnits(Object.assign({},units,{pressureType:v}));}},"Air"), React.createElement(Btn, { val: "surface", cur: units.pressureType||"msl", set: function(v){handleSaveUnits(Object.assign({},units,{pressureType:v}));}},"Surface")))
+, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0"}}, React.createElement('span', { style: {fontSize:13,color:"#e8dcc8"}}, "Pressure (Sea Level)"), React.createElement('div', { style: {display:"flex",gap:5}}, React.createElement(Btn, { val: "mbar", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"mbar"), React.createElement(Btn, { val: "pa", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"Pa"), React.createElement(Btn, { val: "bar", cur: units.pressure, set: function(v){handleSaveUnits(Object.assign({},units,{pressure:v}));}},"bar")))
 , user&&React.createElement('div', { style: {fontSize:11,color:"#4a9fd4",marginTop:8}}, "Synced to your account")
 )
 , iTab==="alerts"&&React.createElement('div', {}
@@ -4011,7 +4103,7 @@ var st=useState("");var iSt=st[0];var setSt=st[1];
 var searching=useState(false);var iSearching=searching[0];var setSearching=searching[1];
 var err=useState("");var iErr=err[0];var setErr=err[1];
 var ap=useState("overview");var iAp=ap[0];var setAp=ap[1];
-var units=useState({temp:"C",speed:"mph",rain:"mm",pressure:"mbar",pressureType:"msl"});var iUnits=units[0];var setUnits=units[1];
+var units=useState({temp:"C",speed:"mph",rain:"mm",pressure:"mbar"});var iUnits=units[0];var setUnits=units[1];
 var searchResults=useState([]);var iSearchResults=searchResults[0];var setSearchResults=searchResults[1];
 var showResults=useState(false);var iShowResults=showResults[0];var setShowResults=showResults[1];
 var searchRef=useRef(null);
@@ -4059,19 +4151,6 @@ function(){fetchByName("London");}
 },[]);
 useEffect(function(){if(!iAlertPrefs.autoNotify||!iFd.length)return;var alerts=buildAlertList(iFd,iAlertPrefs);alerts.slice(0,2).forEach(function(a,i){setTimeout(function(){fireBrowserNotification("Weather Centre: "+a.title,a.body);},1000+i*800);});},[iFd,iAlertPrefs]);
 useEffect(function(){function handleClick(e){if(searchRef.current&&!searchRef.current.contains(e.target))setShowResults(false);}document.addEventListener("mousedown",handleClick);return function(){document.removeEventListener("mousedown",handleClick);};},[]);
-useEffect(function(){
-if(!iFd.length)return;
-var pt=iUnits.pressureType||"msl";
-setFd(function(prev){return prev.map(function(d){
-if(d.pressureMsl==null&&d.pressureSurface==null)return d;
-var v=pt==="surface"?d.pressureSurface:d.pressureMsl;
-if(v==null)return d;
-return Object.assign({},d,{pressure:v});
-});});
-if(iHr&&(iHr.pressureMsl||iHr.pressureSurface)){
-setHr(function(prevHr){if(!prevHr)return prevHr;var src=pt==="surface"?prevHr.pressureSurface:prevHr.pressureMsl;if(!src)return prevHr;return Object.assign({},prevHr,{pressure:src});});
-}
-},[iUnits.pressureType]);
 async function searchLocation(name){
 setSearching(true);setErr("");setSearchResults([]);setShowResults(false);
 try{var gR=await fetch("https://geocoding-api.open-meteo.com/v1/search?name="+encodeURIComponent(name)+"&count=8&language=en&format=json");var gJ=await gR.json();if(!gJ.results||!gJ.results.length){setErr("Location not found.");setSearching(false);return;}if(gJ.results.length===1){await fetchWeather(gJ.results[0]);}else{setSearchResults(gJ.results);setShowResults(true);setSearching(false);}}
@@ -4090,31 +4169,23 @@ catch(e){setErr("Could not load forecast.");setSearching(false);}
 async function fetchWeather(place){
 setSearching(true);setErr("");
 try{
-var wR=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+place.latitude+"&longitude="+place.longitude+"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,precipitation_hours,windspeed_10m_max,windgusts_10m_max,relative_humidity_2m_mean,surface_pressure_mean,pressure_msl_mean,weathercode,uv_index_max&hourly=temperature_2m,weathercode,precipitation_probability,precipitation,windspeed_10m,windgusts_10m,relativehumidity_2m,surface_pressure,pressure_msl,cloudcover,uv_index,dewpoint_2m,visibility&minutely_15=precipitation,rain,showers,weather_code&past_minutely_15=4&forecast_minutely_15=8&timezone=auto&forecast_days=13");
+var wR=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+place.latitude+"&longitude="+place.longitude+"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,precipitation_hours,windspeed_10m_max,windgusts_10m_max,relative_humidity_2m_mean,pressure_msl_mean,weathercode,uv_index_max&hourly=temperature_2m,weathercode,precipitation_probability,precipitation,windspeed_10m,windgusts_10m,relativehumidity_2m,pressure_msl,cloudcover,uv_index,dewpoint_2m,visibility&minutely_15=precipitation,rain,showers,weather_code&past_minutely_15=4&forecast_minutely_15=8&timezone=auto&forecast_days=13");
 var wJ=await wR.json();
 var days=wJ.daily,hrs=wJ.hourly;
 var data=days.time.map(function(t,i){
-var rawTemp=Math.round(days.temperature_2m_max[i]);
+var temp=Math.round(days.temperature_2m_max[i]);
 var code=days.weathercode[i]||0;
 var cloudEst=55,precipSum=days.precipitation_sum[i]||0;
 if(days.precipitation_probability_max[i]>=70)cloudEst=85;
 else if(days.precipitation_probability_max[i]>=40)cloudEst=60;
 else if(days.precipitation_probability_max[i]<=10)cloudEst=15;
-var pMsl=days.pressure_msl_mean?days.pressure_msl_mean[i]:null;
-var pSurf=days.surface_pressure_mean?days.surface_pressure_mean[i]:null;
-var pressureForBias=pMsl!=null?pMsl:(pSurf!=null?pSurf:1013);
-var humidityVal=Math.round(days.relative_humidity_2m_mean[i]||55);
-var nightLow=nightLowFromHourly(hrs,t);
-var bias=heatwaveBiasCorrection(rawTemp,nightLow,cloudEst,i,pressureForBias,humidityVal);
-var temp=Math.round(rawTemp+bias);
 var cond=condFromCode(code,temp,cloudEst,precipSum);
 var mph=Math.round((days.windspeed_10m_max[i]||0)*0.621371);
 var ds=new Date(t+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
 var uvMax=days.uv_index_max&&days.uv_index_max[i]!=null?Math.round(days.uv_index_max[i]):null;
-var pressureSelected=iUnits.pressureType==="surface"?pSurf:pMsl;
-return{date:ds,temp:temp,rawTemp:rawTemp,heatBias:bias,low:Math.round(days.temperature_2m_min[i]),type:i<3?"confirmed":i<7?"near":"estimated",condition:cond,note:"Live forecast via Open-Meteo",wind:mph<5?"very light":mph<10?"light":mph<20?"moderate":"fresh",windMph:mph,gustMph:Math.round((days.windgusts_10m_max[i]||mph*1.3)*0.621371),rain:days.precipitation_probability_max[i]||0,humidity:humidityVal,pressure:Math.round(pressureSelected!=null?pressureSelected:1013),pressureMsl:pMsl!=null?Math.round(pMsl):null,pressureSurface:pSurf!=null?Math.round(pSurf):null,rainMm:parseFloat((days.precipitation_sum[i]||0).toFixed(1)),rainHours:Math.round(days.precipitation_hours[i]||0),uvMax:uvMax};
+return{date:ds,temp:temp,low:Math.round(days.temperature_2m_min[i]),type:i<3?"confirmed":i<7?"near":"estimated",condition:cond,note:"Live forecast via Open-Meteo",wind:mph<5?"very light":mph<10?"light":mph<20?"moderate":"fresh",windMph:mph,gustMph:Math.round((days.windgusts_10m_max[i]||mph*1.3)*0.621371),rain:days.precipitation_probability_max[i]||0,humidity:Math.round(days.relative_humidity_2m_mean[i]||55),pressure:Math.round(days.pressure_msl_mean[i]||1013),rainMm:parseFloat((days.precipitation_sum[i]||0).toFixed(1)),rainHours:Math.round(days.precipitation_hours[i]||0),uvMax:uvMax};
 });
-setHr({times:hrs.time,temps:hrs.temperature_2m,codes:hrs.weathercode,windMph:hrs.windspeed_10m.map(function(v){return Math.round((v||0)*0.621371);}),gusts:hrs.windgusts_10m.map(function(v){return Math.round((v||0)*0.621371);}),rain:hrs.precipitation_probability,rainMm:hrs.precipitation,humidity:hrs.relativehumidity_2m,pressure:iUnits.pressureType==="surface"?hrs.surface_pressure:hrs.pressure_msl,pressureMsl:hrs.pressure_msl,pressureSurface:hrs.surface_pressure,cloud:hrs.cloudcover,uv:hrs.uv_index,dewpoint:hrs.dewpoint_2m,vis:hrs.visibility});
+setHr({times:hrs.time,temps:hrs.temperature_2m,codes:hrs.weathercode,windMph:hrs.windspeed_10m.map(function(v){return Math.round((v||0)*0.621371);}),gusts:hrs.windgusts_10m.map(function(v){return Math.round((v||0)*0.621371);}),rain:hrs.precipitation_probability,rainMm:hrs.precipitation,humidity:hrs.relativehumidity_2m,pressure:hrs.pressure_msl,cloud:hrs.cloudcover,uv:hrs.uv_index,dewpoint:hrs.dewpoint_2m,vis:hrs.visibility});
 if(wJ.minutely_15&&wJ.minutely_15.time){setM15({times:wJ.minutely_15.time,precip:wJ.minutely_15.precipitation,rain:wJ.minutely_15.rain,showers:wJ.minutely_15.showers,codes:wJ.minutely_15.weather_code});}else{setM15(null);}
 setFd(data);
 setLat(place.latitude);setLon(place.longitude);
