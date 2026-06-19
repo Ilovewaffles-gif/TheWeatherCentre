@@ -1021,98 +1021,114 @@ React.createElement('div', { onClick: function(){onJump&&onJump(top.i);}, style:
 )
 );
 }
-function WeatherWarningsPanel(props){
-var locationName=props.locationName,forecastData=props.forecastData,u=props.u,lat=props.lat,lon=props.lon;
-var ws=useState("idle");var iWs=ws[0];var setWs=ws[1]; // idle | loading | done | error
-var warnings=useState([]);var iWarnings=warnings[0];var setWarnings=warnings[1];
-var fetched=useState(null);var iFetched=fetched[0];var setFetched=fetched[1];
-// Derive a clean country/region string from the location name for the search
-var searchLoc=locationName||"";
-// Auto-fetch when locationName changes (new location loaded)
-useEffect(function(){
-  if(!locationName||locationName===iFetched)return;
-  setFetched(locationName);
-  setWs("loading");setWarnings([]);
-  var country=locationName.split(",").slice(-1)[0].trim();
-  var region=locationName.split(",").slice(0,2).join(",").trim();
-  // Build forecastData context for the AI: temp highs, rain %, wind
-  var fcCtx="";
-  if(forecastData&&forecastData.length>0){
-    var top5=forecastData.slice(0,5).map(function(d){return d.date+": "+d.temp+"°C, rain "+d.rain+"%, wind "+d.windMph+"mph";}).join("; ");
-    fcCtx=" The local forecast shows: "+top5+".";
-  }
-  fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      model:"claude-sonnet-4-6",
-      max_tokens:1000,
-      tools:[{type:"web_search_20250305",name:"web_search"}],
-      messages:[{role:"user",content:"Search the web for any CURRENT official weather warnings, alerts, advisories or watches that are ACTIVE RIGHT NOW for "+region+" (country: "+country+"). Check the national meteorological service website for that country (e.g. Met Office for UK, NWS for USA, BOM for Australia, Meteo France for France, DWD for Germany, etc). Also check for any severe weather events happening or expected in the next 48 hours there."+fcCtx+" Return ONLY valid JSON, no markdown: {\"warnings\":[{\"level\":\"red|amber|yellow|advisory\",\"type\":\"string e.g. Extreme Heat Warning\",\"body\":\"short description of the warning\",\"source\":\"e.g. Met Office\",\"expires\":\"e.g. Tonight or Tomorrow 6pm or Unknown\",\"icon\":\"single relevant emoji\"}],\"checked\":\"name of the official service checked\",\"summary\":\"one sentence about current conditions or confirm no warnings active\"}. If there are NO active warnings return an empty warnings array with a summary confirming this."}]
-    })
-  })
-  .then(function(r){return r.json();})
-  .then(function(data){
-    var raw=(data.content||[]).map(function(c){return c.type==="text"?c.text:"";}).join("");
-    var clean=raw.replace(/```json|```/g,"").trim();
-    // Extract JSON object from response even if there is surrounding text
-    var m=clean.match(/\{[\s\S]*\}/);
-    var parsed=m?JSON.parse(m[0]):{warnings:[],summary:"Could not parse response.",checked:""};
-    setWarnings(parsed);
-    setWs("done");
-  })
-  .catch(function(){setWs("error");});
-},[locationName]);
-function levelStyle(level){
-  if(level==="red")return {bg:"rgba(200,0,0,0.12)",border:"rgba(200,0,0,0.45)",col:"#ff4444",dot:"#ff0000"};
-  if(level==="amber")return {bg:"rgba(255,140,0,0.10)",border:"rgba(255,140,0,0.40)",col:"#ffaa44",dot:"#ff8800"};
-  if(level==="yellow")return {bg:"rgba(255,220,0,0.08)",border:"rgba(255,220,0,0.35)",col:"#ffdd44",dot:"#ffcc00"};
-  return {bg:"rgba(100,160,255,0.07)",border:"rgba(100,160,255,0.25)",col:"#88aaff",dot:"#6699ff"};
+function buildWeatherWarnings(forecastData, climAvg){
+  // Derive official-style meteorological warnings from forecast data.
+  // Uses red/amber/yellow tiers consistent with Met Office / WMO conventions:
+  //   Red    = dangerous conditions, significant risk to life
+  //   Amber  = be prepared, travel disruption, dangerous for some
+  //   Yellow = be aware, possible disruption, low risk to life
+  var warnings=[];
+  if(!forecastData||!forecastData.length)return warnings;
+  var avgHigh=climAvg&&climAvg.avgHigh!=null?climAvg.avgHigh:null;
+  forecastData.slice(0,7).forEach(function(d,i){
+    var anomaly=avgHigh!=null?d.temp-avgHigh:null;
+    // Heat warnings — tiered by absolute temp AND anomaly above seasonal average
+    if(d.temp>=42||(anomaly!=null&&anomaly>=15&&d.temp>=30)){
+      warnings.push({level:"red",icon:"🔥",type:"Extreme Heat Warning",body:"Dangerous heat of "+d.temp+"°C forecast"+(anomaly!=null?" (+"+(Math.round(anomaly*10)/10)+"°C above seasonal average)":"")+". Risk to life. Avoid all outdoor activity during midday hours.",expires:d.date,source:"Forecast data"});
+    } else if(d.temp>=36||(anomaly!=null&&anomaly>=10&&d.temp>=28)){
+      warnings.push({level:"amber",icon:"🌡️",type:"Heat Alert",body:d.temp+"°C expected"+(anomaly!=null?" (+"+(Math.round(anomaly*10)/10)+"°C above average)":"")+". Take precautions — stay hydrated, seek shade, check on vulnerable people.",expires:d.date,source:"Forecast data"});
+    } else if(d.temp>=30||(anomaly!=null&&anomaly>=6&&d.temp>=24)){
+      warnings.push({level:"yellow",icon:"☀️",type:"Hot Weather Advisory",body:d.temp+"°C expected"+(anomaly!=null?" (+"+(Math.round(anomaly*10)/10)+"°C above average)":"")+". Stay hydrated and avoid prolonged sun exposure.",expires:d.date,source:"Forecast data"});
+    }
+    // Wind / gale warnings
+    if(d.windMph>=55||d.gustMph>=70){
+      warnings.push({level:"red",icon:"🌀",type:"Severe Gale Warning",body:"Winds "+d.windMph+"mph, gusts to "+d.gustMph+"mph. Dangerous conditions — stay indoors if possible. Risk of structural damage.",expires:d.date,source:"Forecast data"});
+    } else if(d.windMph>=40||d.gustMph>=55){
+      warnings.push({level:"amber",icon:"💨",type:"Gale Warning",body:"Winds "+d.windMph+"mph, gusts to "+d.gustMph+"mph. Travel disruption likely. Secure loose objects outdoors.",expires:d.date,source:"Forecast data"});
+    } else if(d.windMph>=28||d.gustMph>=40){
+      warnings.push({level:"yellow",icon:"💨",type:"Wind Advisory",body:"Winds "+d.windMph+"mph, gusts to "+d.gustMph+"mph. Possible disruption to travel and outdoor activities.",expires:d.date,source:"Forecast data"});
+    }
+    // Rain / flood warnings
+    if(d.rain>=80&&d.rainMm>=25){
+      warnings.push({level:"red",icon:"🌊",type:"Danger of Flooding",body:d.rainMm+"mm of rain forecast ("+d.rain+"% chance). Potential for dangerous flash flooding. Avoid low-lying and flood-prone areas.",expires:d.date,source:"Forecast data"});
+    } else if(d.rain>=70&&d.rainMm>=15){
+      warnings.push({level:"amber",icon:"🌧️",type:"Heavy Rain Warning",body:d.rainMm+"mm expected ("+d.rain+"% chance). Possible localised flooding, road closures and travel disruption.",expires:d.date,source:"Forecast data"});
+    } else if(d.rain>=60&&d.rainMm>=8){
+      warnings.push({level:"yellow",icon:"🌦️",type:"Rain Advisory",body:d.rainMm+"mm possible ("+d.rain+"% chance). Wet and potentially disruptive conditions.",expires:d.date,source:"Forecast data"});
+    }
+    // Thunderstorm warnings
+    if(d.condition.includes("⛈")&&d.temp>=28&&d.humidity>=55){
+      warnings.push({level:"amber",icon:"⛈️",type:"Thunderstorm Warning",body:"Thunderstorm conditions with "+d.temp+"°C and "+d.humidity+"% humidity. Risk of lightning, flash flooding and strong gusts.",expires:d.date,source:"Forecast data"});
+    } else if(d.condition.includes("⛈")){
+      warnings.push({level:"yellow",icon:"⛈️",type:"Thunderstorm Advisory",body:"Thunderstorm possible with "+d.humidity+"% humidity. Stay alert for lightning and localised downpours.",expires:d.date,source:"Forecast data"});
+    }
+    // UV warnings
+    if(d.uvMax!=null){
+      if(d.uvMax>=14){
+        warnings.push({level:"red",icon:"🕶️",type:"Extreme UV Warning",body:"UV index "+d.uvMax+" — exceptionally dangerous solar radiation. Minimize all outdoor exposure; cover all exposed skin.",expires:d.date,source:"CAMS/Forecast data"});
+      } else if(d.uvMax>=11){
+        warnings.push({level:"amber",icon:"🕶️",type:"Very High UV Warning",body:"UV index "+d.uvMax+" — extreme sun exposure risk. Sun protection essential; seek shade between 11am–3pm.",expires:d.date,source:"CAMS/Forecast data"});
+      } else if(d.uvMax>=8){
+        warnings.push({level:"yellow",icon:"🕶️",type:"High UV Advisory",body:"UV index "+d.uvMax+" — high sun exposure risk. SPF30+ sunscreen, hat and sunglasses required.",expires:d.date,source:"CAMS/Forecast data"});
+      }
+    }
+  });
+  // Deduplicate: keep only the highest-level warning per type (e.g. don't show 7 days of heat warnings)
+  var typeOrder={"red":0,"amber":1,"yellow":2,"advisory":3};
+  var seen={};
+  var deduped=[];
+  warnings.forEach(function(w){
+    var key=w.type;
+    if(!seen[key]||typeOrder[w.level]<typeOrder[seen[key].level]){seen[key]=w;}
+  });
+  // Sort: red first, then amber, then yellow
+  Object.values(seen).sort(function(a,b){return typeOrder[a.level]-typeOrder[b.level];}).forEach(function(w){deduped.push(w);});
+  return deduped;
 }
-var hasWarnings=iWarnings&&iWarnings.warnings&&iWarnings.warnings.length>0;
-// Don't render at all until a location is set
-if(!locationName)return null;
+
+function WeatherWarningsPanel(props){
+var locationName=props.locationName,forecastData=props.forecastData,climAvg=props.climAvg;
+if(!locationName||!forecastData||!forecastData.length)return null;
+var warnings=buildWeatherWarnings(forecastData,climAvg);
+var hasWarnings=warnings.length>0;
+function levelStyle(level){
+  if(level==="red")   return {bg:"rgba(200,0,0,0.12)",   border:"rgba(200,0,0,0.45)",   col:"#ff4444", dot:"#ff0000"};
+  if(level==="amber") return {bg:"rgba(255,140,0,0.10)", border:"rgba(255,140,0,0.40)", col:"#ffaa44", dot:"#ff8800"};
+  if(level==="yellow")return {bg:"rgba(255,220,0,0.08)", border:"rgba(255,220,0,0.35)", col:"#ffdd44", dot:"#ffcc00"};
+  return                      {bg:"rgba(100,160,255,0.07)",border:"rgba(100,160,255,0.25)",col:"#88aaff",dot:"#6699ff"};
+}
 return (
 React.createElement('div', {style:{marginBottom:20}}
-, iWs==="loading"&&React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,fontSize:12,color:"#666"}}
-  , React.createElement('span', {style:{fontSize:16}}, "📡")
-  , "Checking for official weather warnings in ", React.createElement('b', {style:{color:"#aaa"}}, locationName.split(",").slice(0,2).join(",").trim()), "..."
-)
-, iWs==="error"&&React.createElement('div', {style:{padding:"10px 14px",background:"rgba(255,100,0,0.06)",border:"1px solid rgba(255,100,0,0.2)",borderRadius:12,fontSize:11,color:"#777"}}
-  , "⚠️ Could not check for weather warnings — no connection to search service."
-)
-, iWs==="done"&&hasWarnings&&(
-  React.createElement('div', {style:{background:"rgba(255,60,0,0.06)",border:"1px solid rgba(255,80,0,0.25)",borderRadius:14,padding:"14px 16px"}}
+, hasWarnings&&(
+  React.createElement('div', {style:{background:"rgba(255,60,0,0.05)",border:"1px solid rgba(255,80,0,0.22)",borderRadius:14,padding:"14px 16px"}}
   , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}
     , React.createElement('span', {style:{fontSize:18}}, "📻")
-    , React.createElement('span', {style:{fontSize:11,letterSpacing:2,color:"#ff7744",textTransform:"uppercase",fontWeight:"bold"}}, "Official Weather Warnings")
-    , React.createElement('span', {style:{fontSize:10,color:"#555",marginLeft:"auto"}}, iWarnings.checked||"")
+    , React.createElement('span', {style:{fontSize:11,letterSpacing:2,color:"#ff7744",textTransform:"uppercase",fontWeight:"bold"}}, "Weather Warnings")
+    , React.createElement('span', {style:{fontSize:10,color:"#555",marginLeft:"auto"}}, warnings.length," warning"+(warnings.length>1?"s":"")+" active")
   )
-  , iWarnings.warnings.map(function(w,i){
+  , warnings.map(function(w,i){
     var s=levelStyle(w.level);
-    return React.createElement('div', {key:i,style:{background:s.bg,border:"1px solid "+s.border,borderRadius:10,padding:"10px 13px",marginBottom:i<iWarnings.warnings.length-1?8:0,display:"flex",gap:10,alignItems:"flex-start"}}
-      , React.createElement('span', {style:{fontSize:20,flexShrink:0}}, w.icon||"⚠️")
+    return React.createElement('div', {key:i,style:{background:s.bg,border:"1px solid "+s.border,borderRadius:10,padding:"10px 13px",marginBottom:i<warnings.length-1?8:0,display:"flex",gap:10,alignItems:"flex-start"}}
+      , React.createElement('span', {style:{fontSize:20,flexShrink:0}}, w.icon)
       , React.createElement('div', {style:{flex:1}}
         , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}
           , React.createElement('span', {style:{width:8,height:8,borderRadius:"50%",background:s.dot,display:"inline-block",flexShrink:0}})
           , React.createElement('span', {style:{fontSize:12,fontWeight:"bold",color:s.col}}, w.type)
-          , React.createElement('span', {style:{fontSize:10,color:"#555",padding:"1px 7px",border:"1px solid "+s.border,borderRadius:10,textTransform:"uppercase",letterSpacing:1}}, w.level)
+          , React.createElement('span', {style:{fontSize:9,color:s.col,padding:"1px 7px",border:"1px solid "+s.border,borderRadius:10,textTransform:"uppercase",letterSpacing:1}}, w.level)
         )
         , React.createElement('div', {style:{fontSize:12,color:"#c0b090",lineHeight:1.55}}, w.body)
-        , w.expires&&w.expires!=="Unknown"&&React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:4}}, "Expires: "+w.expires)
+        , w.expires&&React.createElement('div', {style:{fontSize:10,color:"#555",marginTop:4}}, w.expires)
       )
     );
   })
-  , iWarnings.summary&&React.createElement('div', {style:{fontSize:10,color:"#555",marginTop:10,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.05)"}}, iWarnings.summary)
   )
 )
-, iWs==="done"&&!hasWarnings&&iWarnings.summary&&(
-  React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(44,180,80,0.06)",border:"1px solid rgba(44,180,80,0.20)",borderRadius:12}}
+, !hasWarnings&&(
+  React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(44,180,80,0.05)",border:"1px solid rgba(44,180,80,0.18)",borderRadius:12}}
     , React.createElement('span', {style:{fontSize:16}}, "✅")
     , React.createElement('div', {}
-      , React.createElement('div', {style:{fontSize:12,color:"#44cc66",fontWeight:"bold",marginBottom:2}}, "No active weather warnings")
-      , React.createElement('div', {style:{fontSize:11,color:"#555"}}, iWarnings.summary)
-      , iWarnings.checked&&React.createElement('div', {style:{fontSize:10,color:"#444",marginTop:2}}, "Source: "+iWarnings.checked)
+      , React.createElement('div', {style:{fontSize:12,color:"#44cc66",fontWeight:"bold",marginBottom:1}}, "No active weather warnings")
+      , React.createElement('div', {style:{fontSize:11,color:"#444"}}, "No significant weather hazards in the 7-day forecast for "+locationName.split(",").slice(0,2).join(",").trim()+".")
     )
   )
 )
@@ -1131,7 +1147,7 @@ var panel={background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,25
 return (
 React.createElement('div', {}
 , React.createElement(CurrentWeather, { forecastData: forecastData, hourlyRaw: hourlyRaw, locationName: locationName, u: u, lat: lat, lon: lon})
-, React.createElement(WeatherWarningsPanel, { locationName: locationName, forecastData: forecastData, u: u, lat: lat, lon: lon})
+, React.createElement(WeatherWarningsPanel, { locationName: locationName, forecastData: forecastData, climAvg: climAvg})
 , React.createElement(HeatwaveSummaryBanner, { forecastData: forecastData, u: u, climAvg: climAvg, onJump: function(idx){setSel(idx);setDetailV("heatwave");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}}), React.createElement('div', { style: panel}
 , React.createElement('div', { style: {display:"flex",gap:5,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}
 , tabs.map(function(t){var on=iGraph===t.id;return React.createElement('button', { key: t.id, onClick: function(){setGraph(t.id);setSel(null);}, style: {padding:"5px 10px",borderRadius:20,border:"1px solid",borderColor:on?"#ff7700":"rgba(255,255,255,0.12)",background:on?"rgba(255,119,0,0.18)":"rgba(255,255,255,0.03)",color:on?"#ffaa44":"#888",fontSize:11,cursor:"pointer"}}, t.label);})
