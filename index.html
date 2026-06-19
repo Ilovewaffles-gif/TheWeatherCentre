@@ -1021,6 +1021,104 @@ React.createElement('div', { onClick: function(){onJump&&onJump(top.i);}, style:
 )
 );
 }
+function WeatherWarningsPanel(props){
+var locationName=props.locationName,forecastData=props.forecastData,u=props.u,lat=props.lat,lon=props.lon;
+var ws=useState("idle");var iWs=ws[0];var setWs=ws[1]; // idle | loading | done | error
+var warnings=useState([]);var iWarnings=warnings[0];var setWarnings=warnings[1];
+var fetched=useState(null);var iFetched=fetched[0];var setFetched=fetched[1];
+// Derive a clean country/region string from the location name for the search
+var searchLoc=locationName||"";
+// Auto-fetch when locationName changes (new location loaded)
+useEffect(function(){
+  if(!locationName||locationName===iFetched)return;
+  setFetched(locationName);
+  setWs("loading");setWarnings([]);
+  var country=locationName.split(",").slice(-1)[0].trim();
+  var region=locationName.split(",").slice(0,2).join(",").trim();
+  // Build forecastData context for the AI: temp highs, rain %, wind
+  var fcCtx="";
+  if(forecastData&&forecastData.length>0){
+    var top5=forecastData.slice(0,5).map(function(d){return d.date+": "+d.temp+"°C, rain "+d.rain+"%, wind "+d.windMph+"mph";}).join("; ");
+    fcCtx=" The local forecast shows: "+top5+".";
+  }
+  fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      model:"claude-sonnet-4-6",
+      max_tokens:1000,
+      tools:[{type:"web_search_20250305",name:"web_search"}],
+      messages:[{role:"user",content:"Search the web for any CURRENT official weather warnings, alerts, advisories or watches that are ACTIVE RIGHT NOW for "+region+" (country: "+country+"). Check the national meteorological service website for that country (e.g. Met Office for UK, NWS for USA, BOM for Australia, Meteo France for France, DWD for Germany, etc). Also check for any severe weather events happening or expected in the next 48 hours there."+fcCtx+" Return ONLY valid JSON, no markdown: {\"warnings\":[{\"level\":\"red|amber|yellow|advisory\",\"type\":\"string e.g. Extreme Heat Warning\",\"body\":\"short description of the warning\",\"source\":\"e.g. Met Office\",\"expires\":\"e.g. Tonight or Tomorrow 6pm or Unknown\",\"icon\":\"single relevant emoji\"}],\"checked\":\"name of the official service checked\",\"summary\":\"one sentence about current conditions or confirm no warnings active\"}. If there are NO active warnings return an empty warnings array with a summary confirming this."}]
+    })
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    var raw=(data.content||[]).map(function(c){return c.type==="text"?c.text:"";}).join("");
+    var clean=raw.replace(/```json|```/g,"").trim();
+    // Extract JSON object from response even if there is surrounding text
+    var m=clean.match(/\{[\s\S]*\}/);
+    var parsed=m?JSON.parse(m[0]):{warnings:[],summary:"Could not parse response.",checked:""};
+    setWarnings(parsed);
+    setWs("done");
+  })
+  .catch(function(){setWs("error");});
+},[locationName]);
+function levelStyle(level){
+  if(level==="red")return {bg:"rgba(200,0,0,0.12)",border:"rgba(200,0,0,0.45)",col:"#ff4444",dot:"#ff0000"};
+  if(level==="amber")return {bg:"rgba(255,140,0,0.10)",border:"rgba(255,140,0,0.40)",col:"#ffaa44",dot:"#ff8800"};
+  if(level==="yellow")return {bg:"rgba(255,220,0,0.08)",border:"rgba(255,220,0,0.35)",col:"#ffdd44",dot:"#ffcc00"};
+  return {bg:"rgba(100,160,255,0.07)",border:"rgba(100,160,255,0.25)",col:"#88aaff",dot:"#6699ff"};
+}
+var hasWarnings=iWarnings&&iWarnings.warnings&&iWarnings.warnings.length>0;
+// Don't render at all until a location is set
+if(!locationName)return null;
+return (
+React.createElement('div', {style:{marginBottom:20}}
+, iWs==="loading"&&React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,fontSize:12,color:"#666"}}
+  , React.createElement('span', {style:{fontSize:16}}, "📡")
+  , "Checking for official weather warnings in ", React.createElement('b', {style:{color:"#aaa"}}, locationName.split(",").slice(0,2).join(",").trim()), "..."
+)
+, iWs==="error"&&React.createElement('div', {style:{padding:"10px 14px",background:"rgba(255,100,0,0.06)",border:"1px solid rgba(255,100,0,0.2)",borderRadius:12,fontSize:11,color:"#777"}}
+  , "⚠️ Could not check for weather warnings — no connection to search service."
+)
+, iWs==="done"&&hasWarnings&&(
+  React.createElement('div', {style:{background:"rgba(255,60,0,0.06)",border:"1px solid rgba(255,80,0,0.25)",borderRadius:14,padding:"14px 16px"}}
+  , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}
+    , React.createElement('span', {style:{fontSize:18}}, "📻")
+    , React.createElement('span', {style:{fontSize:11,letterSpacing:2,color:"#ff7744",textTransform:"uppercase",fontWeight:"bold"}}, "Official Weather Warnings")
+    , React.createElement('span', {style:{fontSize:10,color:"#555",marginLeft:"auto"}}, iWarnings.checked||"")
+  )
+  , iWarnings.warnings.map(function(w,i){
+    var s=levelStyle(w.level);
+    return React.createElement('div', {key:i,style:{background:s.bg,border:"1px solid "+s.border,borderRadius:10,padding:"10px 13px",marginBottom:i<iWarnings.warnings.length-1?8:0,display:"flex",gap:10,alignItems:"flex-start"}}
+      , React.createElement('span', {style:{fontSize:20,flexShrink:0}}, w.icon||"⚠️")
+      , React.createElement('div', {style:{flex:1}}
+        , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}
+          , React.createElement('span', {style:{width:8,height:8,borderRadius:"50%",background:s.dot,display:"inline-block",flexShrink:0}})
+          , React.createElement('span', {style:{fontSize:12,fontWeight:"bold",color:s.col}}, w.type)
+          , React.createElement('span', {style:{fontSize:10,color:"#555",padding:"1px 7px",border:"1px solid "+s.border,borderRadius:10,textTransform:"uppercase",letterSpacing:1}}, w.level)
+        )
+        , React.createElement('div', {style:{fontSize:12,color:"#c0b090",lineHeight:1.55}}, w.body)
+        , w.expires&&w.expires!=="Unknown"&&React.createElement('div', {style:{fontSize:10,color:"#666",marginTop:4}}, "Expires: "+w.expires)
+      )
+    );
+  })
+  , iWarnings.summary&&React.createElement('div', {style:{fontSize:10,color:"#555",marginTop:10,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.05)"}}, iWarnings.summary)
+  )
+)
+, iWs==="done"&&!hasWarnings&&iWarnings.summary&&(
+  React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(44,180,80,0.06)",border:"1px solid rgba(44,180,80,0.20)",borderRadius:12}}
+    , React.createElement('span', {style:{fontSize:16}}, "✅")
+    , React.createElement('div', {}
+      , React.createElement('div', {style:{fontSize:12,color:"#44cc66",fontWeight:"bold",marginBottom:2}}, "No active weather warnings")
+      , React.createElement('div', {style:{fontSize:11,color:"#555"}}, iWarnings.summary)
+      , iWarnings.checked&&React.createElement('div', {style:{fontSize:10,color:"#444",marginTop:2}}, "Source: "+iWarnings.checked)
+    )
+  )
+)
+)
+);
+}
 function WeatherOverview(props){
 var forecastData=props.forecastData,locationName=props.locationName,units=props.u,hourlyRaw=props.hourlyRaw,lat=props.lat,lon=props.lon,climAvg=props.climAvg;
 var u=units;
@@ -1033,8 +1131,8 @@ var panel={background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,25
 return (
 React.createElement('div', {}
 , React.createElement(CurrentWeather, { forecastData: forecastData, hourlyRaw: hourlyRaw, locationName: locationName, u: u, lat: lat, lon: lon})
-, React.createElement(HeatwaveSummaryBanner, { forecastData: forecastData, u: u, climAvg: climAvg, onJump: function(idx){setSel(idx);setDetailV("heatwave");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}})
-, React.createElement('div', { style: panel}
+, React.createElement(WeatherWarningsPanel, { locationName: locationName, forecastData: forecastData, u: u, lat: lat, lon: lon})
+, React.createElement(HeatwaveSummaryBanner, { forecastData: forecastData, u: u, climAvg: climAvg, onJump: function(idx){setSel(idx);setDetailV("heatwave");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}}), React.createElement('div', { style: panel}
 , React.createElement('div', { style: {display:"flex",gap:5,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}
 , tabs.map(function(t){var on=iGraph===t.id;return React.createElement('button', { key: t.id, onClick: function(){setGraph(t.id);setSel(null);}, style: {padding:"5px 10px",borderRadius:20,border:"1px solid",borderColor:on?"#ff7700":"rgba(255,255,255,0.12)",background:on?"rgba(255,119,0,0.18)":"rgba(255,255,255,0.03)",color:on?"#ffaa44":"#888",fontSize:11,cursor:"pointer"}}, t.label);})
 , iSel!==null&&React.createElement('div', { style: {marginLeft:"auto",fontSize:11,color:"#aaa"}}, React.createElement('span', { style: {color:"#fff",fontWeight:"bold"}}, forecastData[iSel].date), " ", React.createElement('span', { style: {color:tc(forecastData[iSel].temp)}}, fmtTemp(forecastData[iSel].temp,u.temp)))
@@ -1355,28 +1453,33 @@ var error=useState("");var iError=error[0];var setError=error[1];
 async function fetchLive(){
 setLoading(true);setError("");setLr([]);
 try{
-var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:"Search the web for weather records broken in 2025 or 2026. Find: hottest temperature, coldest, heaviest rainfall, strongest wind, any national records broken. Respond ONLY with valid JSON and nothing else, no markdown: {\"records\":[{\"title\":\"string\",\"value\":\"string\",\"location\":\"string\",\"date\":\"string\",\"context\":\"string\",\"icon\":\"emoji\",\"color\":\"hex\"}]}"}]})});
+var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:"Search the web for notable extreme weather events, heatwaves, floods, storms, droughts, cold snaps, or national/regional/monthly records broken anywhere in the world in the past 3 months (up to today in 2026). Include events like a country breaking its all-time heat record, a city flooding, an unusually powerful storm, or an unprecedented cold snap. Do NOT require world all-time records — regional, national or monthly records count. Find at least 5-8 events. Respond ONLY with valid JSON, no markdown, no preamble: {\"records\":[{\"title\":\"string e.g. UK June Heat Record\",\"value\":\"string e.g. 36.2°C\",\"location\":\"string\",\"date\":\"string\",\"context\":\"one sentence explaining what made it notable\",\"icon\":\"emoji\",\"color\":\"hex color matching severity\"}]}"}]})});
 var data=await res.json();
 var raw=(data.content||[]).map(function(c){return c.type==="text"?c.text:"";}).join("");
-var clean=raw.split("```json").join("").split("```").join("").trim();
-var parsed=JSON.parse(clean);
+var clean=raw.replace(/```json|```/g,"").trim();
+var m=clean.match(/\{[\s\S]*\}/);
+var parsed=m?JSON.parse(m[0]):{records:[]};
 setLr(parsed.records||[]);
 setLoaded(true);
 }catch(e){
-setError("Could not fetch live data. Showing all-time records below.");
+setError("Could not fetch live data. Showing notable regional records below.");
 setLoaded(true);
 }
 setLoading(false);
 }
 var allTime=[
-{title:"Highest Temperature",value:"56.7°C / 134°F",location:"Death Valley, USA",date:"10 Jul 1913",context:"The highest reliably recorded surface air temperature on Earth.",icon:"🔥",color:"#ff1500"},
-{title:"Lowest Temperature",value:"-89.2°C / -128.6°F",location:"Vostok Station, Antarctica",date:"21 Jul 1983",context:"Recorded at the Soviet Antarctic research station during midwinter.",icon:"🧊",color:"#88ccff"},
-{title:"Most Rain in 24 Hours",value:"1,825mm / 71.8 in",location:"Cilaos, Reunion Island",date:"7-8 Jan 1966",context:"During Tropical Cyclone Denise — the highest 24-hour rainfall total ever recorded.",icon:"🌊",color:"#4488ff"},
-{title:"Strongest Wind Gust",value:"408 km/h / 253 mph",location:"Barrow Island, Australia",date:"10 Apr 1996",context:"Recorded during Tropical Cyclone Olivia — highest surface wind gust ever measured.",icon:"🌀",color:"#00ccff"},
-{title:"Hottest Month (Global)",value:"+1.51°C above pre-industrial",location:"Global Average",date:"July 2023",context:"July 2023 was the hottest month in recorded global history.",icon:"🌍",color:"#ff6600"},
-{title:"Most Snow in 24 Hours",value:"192cm / 75.8 in",location:"Silver Lake, Colorado, USA",date:"14-15 Apr 1921",context:"The greatest single-day snowfall ever recorded at any weather station.",icon:"❄️",color:"#aaddff"},
-{title:"Longest Drought",value:"173 months without rain",location:"Arica, Chile",date:"Oct 1903 - Jan 1918",context:"The Atacama Desert city went over 14 consecutive years without measurable rainfall.",icon:"🏜️",color:"#cc8833"},
+{title:"World Hottest Temperature",value:"56.7°C / 134°F",location:"Death Valley, USA",date:"10 Jul 1913",context:"The highest reliably recorded surface air temperature on Earth.",icon:"🔥",color:"#ff1500"},
+{title:"World Coldest Temperature",value:"-89.2°C / -128.6°F",location:"Vostok Station, Antarctica",date:"21 Jul 1983",context:"Recorded at the Soviet Antarctic research station during midwinter.",icon:"🧊",color:"#88ccff"},
+{title:"World Most Rain in 24h",value:"1,825mm / 71.8 in",location:"Cilaos, Reunion Island",date:"7-8 Jan 1966",context:"During Tropical Cyclone Denise — the highest 24-hour rainfall total ever recorded.",icon:"🌊",color:"#4488ff"},
+{title:"World Strongest Wind Gust",value:"408 km/h / 253 mph",location:"Barrow Island, Australia",date:"10 Apr 1996",context:"Recorded during Tropical Cyclone Olivia — highest surface wind gust ever measured.",icon:"🌀",color:"#00ccff"},
+{title:"UK All-Time Heat Record",value:"40.3°C / 104.5°F",location:"Coningsby, Lincolnshire, UK",date:"19 Jul 2022",context:"The first time 40°C was ever recorded in the UK, during an exceptional European heat dome.",icon:"🔥",color:"#ff4400"},
+{title:"UK June Record",value:"35.6°C / 96.1°F",location:"Wisley, Surrey, UK",date:"25 Jun 1976",context:"The UK's highest June temperature on record — a frequent benchmark during summer heatwaves.",icon:"☀️",color:"#ff7700"},
+{title:"Europe All-Time Heat Record",value:"48.8°C / 119.8°F",location:"Syracuse, Sicily, Italy",date:"11 Aug 2021",context:"The highest temperature ever recorded in European history, during a North African heat plume.",icon:"🌡️",color:"#ff2200"},
+{title:"Australia All-Time Heat Record",value:"50.7°C / 123.3°F",location:"Onslow, Western Australia",date:"13 Jan 2022",context:"Australia's highest reliably recorded temperature, set during an intense inland heat event.",icon:"🔥",color:"#ff5500"},
+{title:"Canada All-Time Heat Record",value:"49.6°C / 121.3°F",location:"Lytton, British Columbia",date:"29 Jun 2021",context:"Set during the catastrophic Pacific Northwest heat dome — Lytton burned down the following day.",icon:"🔥",color:"#ff3300"},
+{title:"US Most Snow in 24h",value:"192cm / 75.8 in",location:"Silver Lake, Colorado, USA",date:"14-15 Apr 1921",context:"The greatest single-day snowfall ever recorded at any weather station.",icon:"❄️",color:"#aaddff"},
 {title:"Largest Hailstone",value:"20cm diameter, 878g",location:"Vivian, South Dakota, USA",date:"23 Jul 2010",context:"The largest hailstone ever officially recorded anywhere in the world.",icon:"⛏️",color:"#aabbcc"},
+{title:"Hottest Month (Global Average)",value:"+1.51°C above pre-industrial",location:"Global Average",date:"July 2023",context:"July 2023 was the hottest month in all of recorded global climate history.",icon:"🌍",color:"#ff6600"},
 ];
 var localEx=[];
 if(forecastData.length>0){
@@ -1404,15 +1507,15 @@ React.createElement('div', {}
 , React.createElement('div', { style: {fontSize:11,letterSpacing:3,color:"#ff7700",textTransform:"uppercase",marginBottom:16}}, "Weather Extremes")
 , localEx.length>0&&React.createElement('div', { style: {marginBottom:24}}, React.createElement('div', { style: {fontSize:11,color:"#ff9944",letterSpacing:2,marginBottom:10}}, "YOUR LOCATION FORECAST EXTREMES"), React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:8}}, localEx.map(function(r,i){return Card(r,i);})))
 , React.createElement('div', { style: {display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:12}}
-, React.createElement('div', { style: {fontSize:11,color:"#ff9944",letterSpacing:2}}, "CURRENT WORLD RECORDS BEING BROKEN")
-, !iLoaded&&React.createElement('button', { onClick: fetchLive, disabled: iLoading, style: {padding:"6px 14px",borderRadius:10,border:"1px solid rgba(255,119,0,0.4)",background:"rgba(255,119,0,0.12)",color:"#ffaa44",fontSize:11,cursor:iLoading?"wait":"pointer"}}, iLoading?"Searching...":"Search Live Records")
+, React.createElement('div', { style: {fontSize:11,color:"#ff9944",letterSpacing:2}}, "RECENT EXTREME WEATHER EVENTS")
+, !iLoaded&&React.createElement('button', { onClick: fetchLive, disabled: iLoading, style: {padding:"6px 14px",borderRadius:10,border:"1px solid rgba(255,119,0,0.4)",background:"rgba(255,119,0,0.12)",color:"#ffaa44",fontSize:11,cursor:iLoading?"wait":"pointer"}}, iLoading?"Searching...":"Search Live Events")
 , iLoaded&&React.createElement('button', { onClick: function(){setLoaded(false);setLr([]);setError("");}, style: {padding:"6px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",color:"#888",fontSize:11,cursor:"pointer"}}, "Refresh")
 )
-, !iLoaded&&!iLoading&&React.createElement('div', { style: {textAlign:"center",padding:"28px",color:"#555",border:"1px dashed rgba(255,255,255,0.07)",borderRadius:12,marginBottom:16,fontSize:12}}, "Click \"Search Live Records\" to fetch current world weather extremes via AI web search.")
-, iLoading&&React.createElement('div', { style: {textAlign:"center",padding:"28px",color:"#666",fontSize:12}}, "Searching the web for current world weather records...")
+, !iLoaded&&!iLoading&&React.createElement('div', { style: {textAlign:"center",padding:"28px",color:"#555",border:"1px dashed rgba(255,255,255,0.07)",borderRadius:12,marginBottom:16,fontSize:12}}, "Click \"Search Live Events\" to fetch recent extreme weather events worldwide via AI web search.")
+, iLoading&&React.createElement('div', { style: {textAlign:"center",padding:"28px",color:"#666",fontSize:12}}, "Searching the web for recent extreme weather events...")
 , iError&&React.createElement('div', { style: {color:"#ff9944",fontSize:11,padding:"8px 12px",background:"rgba(255,119,0,0.07)",borderRadius:8,marginBottom:12}}, iError)
 , iLoaded&&iLr.length>0&&React.createElement('div', { style: {marginBottom:24}}, React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:8,marginBottom:6}}, iLr.map(function(r,i){return Card(r,i);})), React.createElement('div', { style: {fontSize:9,color:"#333",textAlign:"center"}}, "Sourced via live web search"))
-, React.createElement('div', { style: {marginBottom:8}}, React.createElement('div', { style: {fontSize:11,color:"#ff9944",letterSpacing:2,marginBottom:10}}, "ALL-TIME WORLD RECORDS"), React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:8}}, allTime.map(function(r,i){return Card(r,i);})))
+, React.createElement('div', { style: {marginBottom:8}}, React.createElement('div', { style: {fontSize:11,color:"#ff9944",letterSpacing:2,marginBottom:10}}, "NOTABLE RECORDS — WORLD & REGIONAL"), React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:8}}, allTime.map(function(r,i){return Card(r,i);})))
 )
 );
 }
