@@ -109,9 +109,13 @@ function wc(w){return w>=30?"#ff7722":w>=20?"#ffaa44":w>=10?"#ffcc88":"#fff0cc";
 function pc(p){return p>=1030?"#ff6600":p>=1020?"#ffaa00":p>=1010?"#88ddff":p>=1000?"#6699cc":"#9955cc";}
 function bgc(t){return t>=33?"rgba(255,45,0,0.18)":t>=30?"rgba(255,100,0,0.14)":t>=27?"rgba(255,140,0,0.11)":t>=24?"rgba(255,170,0,0.09)":t>=21?"rgba(255,200,0,0.08)":t>=18?"rgba(180,210,0,0.08)":"rgba(74,159,212,0.06)";}
 
-function uvCol(uv){return uv>=11?"#ff1500":uv>=8?"#ff6600":uv>=6?"#ffaa00":uv>=3?"#ffcc00":uv>0?"#7bbf44":"#555";}
-function uvLbl(uv){return uv>=11?"Extreme":uv>=8?"Very High":uv>=6?"High":uv>=3?"Moderate":uv>0?"Low":"None";}
-function uvProtect(uv){return uv>=11?"Extreme — avoid all sun exposure":uv>=8?"Very High — protection essential":uv>=6?"High — protection essential":uv>=3?"Moderate — apply sunscreen":uv>0?"Low risk":"No UV";}
+// UV helpers extended to handle CAMS values up to 20+ at equatorial latitudes.
+// WHO UV scale: 1-2 Low, 3-5 Moderate, 6-7 High, 8-10 Very High, 11+ Extreme.
+// At tropical/equatorial locations CAMS correctly reports 12-20; the previous GFS
+// source was capped ~9 due to a simplified UVB scaling formula.
+function uvCol(uv){return uv>=14?"#cc0000":uv>=11?"#ff1500":uv>=8?"#ff6600":uv>=6?"#ffaa00":uv>=3?"#ffcc00":uv>0?"#7bbf44":"#555";}
+function uvLbl(uv){return uv>=14?"Extreme+":uv>=11?"Extreme":uv>=8?"Very High":uv>=6?"High":uv>=3?"Moderate":uv>0?"Low":"None";}
+function uvProtect(uv){return uv>=14?"Extreme — minimize all outdoor exposure; cover all skin":uv>=11?"Extreme — avoid all sun exposure; keep skin covered":uv>=8?"Very High — protection essential; seek shade midday":uv>=6?"High — sunscreen, hat and shade essential":uv>=3?"Moderate — apply SPF30+ sunscreen":uv>0?"Low — minimal risk":"No UV";}
 
 function windCat(mph){
   if(mph<5)return "Very Light";if(mph<10)return "Light Breeze";if(mph<15)return "Moderate Breeze";
@@ -408,7 +412,7 @@ function buildAlertList(forecastData, prefs){
     if(thresholds.storm && d.humidity>=50 && d.temp>=28 && d.condition.includes("⛈"))
       alerts.push({icon:"⛈️", level:"danger", title:"Storm Risk — "+d.date, body:"Thunderstorm conditions: "+d.temp+"°C, "+d.humidity+"% humidity."});
     if(thresholds.uv && d.uvMax!=null && d.uvMax >= thresholds.uv)
-      alerts.push({icon:"🕶️", level:"warn", title:"Very High UV — "+d.date, body:"UV index "+d.uvMax+". Sun protection essential."});
+      alerts.push({icon:"🕶️", level:d.uvMax>=11?"danger":"warn", title:(d.uvMax>=11?"Extreme UV":"Very High UV")+" — "+d.date, body:"UV index "+d.uvMax+" ("+uvLbl(d.uvMax)+"). "+uvProtect(d.uvMax)+"."});
   });
   return alerts;
 }
@@ -937,9 +941,15 @@ var loading=useState(true);var iLoading=loading[0];var setLoading=loading[1];
 useEffect(function(){
 if(!lat||!lon){setLoading(false);return;}
 setLoading(true);
-fetch("https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,windgusts_10m,relativehumidity_2m,pressure_msl,cloudcover,uv_index,precipitation,is_day&timezone=auto")
-.then(function(r){return r.json();})
-.then(function(j){
+// Fetch current conditions and CAMS UV in parallel
+// CAMS (Copernicus) correctly models UV 12-20 at equatorial latitudes;
+// GFS-derived UV in the main API is capped ~9 due to simplified UVB scaling.
+Promise.all([
+  fetch("https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,windgusts_10m,relativehumidity_2m,pressure_msl,cloudcover,uv_index,precipitation,is_day&timezone=auto").then(function(r){return r.json();}),
+  fetch("https://air-quality-api.open-meteo.com/v1/air-quality?latitude="+lat+"&longitude="+lon+"&current=uv_index&timezone=auto").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+])
+.then(function(results){
+var j=results[0],camsJ=results[1];
 var c=j.current;
 if(!c){setLoading(false);return;}
 var code=c.weathercode||0;
@@ -951,7 +961,9 @@ var cond=condFromCode(code,temp,cloud,precip);
 if(!isDay&&(cond.includes("☀")||cond.includes("🌡")))cond="🌙";
 var mph=Math.round((c.windspeed_10m||0)*0.621371);
 var gust=Math.round((c.windgusts_10m||mph*1.3)*0.621371);
-var uv=Math.round(c.uv_index||0);
+// Prefer CAMS UV for accuracy at all latitudes; fall back to GFS value
+var camsUv=camsJ&&camsJ.current&&camsJ.current.uv_index!=null?camsJ.current.uv_index:null;
+var uv=camsUv!=null?Math.round(camsUv*10)/10:Math.round(c.uv_index||0);
 var hum=Math.round(c.relativehumidity_2m||50);
 var pres=Math.round(c.pressure_msl||1013);
 var fl=Math.round(c.apparent_temperature||temp);
@@ -1160,7 +1172,8 @@ var shT=Math.round(h.temp+condBonus(h.condition,h.temp,true)+humBonus(h.humidity
 var suT=Math.round(h.temp+condBonus(h.condition,h.temp,false)+humBonus(h.humidity)+windBonus(h.windMph));
 var hasSunHr=hasSun(h.condition);
 var msgs=[];
-if(h.uv>=11)msgs.push("Extreme UV — avoid all sun exposure.");
+if(h.uv>=14)msgs.push("Extreme UV ("+h.uv+") — minimize outdoor exposure; cover all skin.");
+else if(h.uv>=11)msgs.push("Extreme UV — avoid all sun exposure.");
 else if(h.uv>=8)msgs.push("Very High UV — protection essential.");
 else if(h.uv>=6)msgs.push("High UV — sunscreen essential.");
 else if(h.uv>=3)msgs.push("Moderate UV — apply sunscreen.");
@@ -1652,7 +1665,7 @@ React.createElement('div', { style: {position:"fixed",top:0,left:0,right:0,botto
 , React.createElement(SliderRow, { label:"Heat Alert", desc:"Alert when daily high exceeds this", min:20, max:45, val:alertPrefs.tempHeat||30, unit:"C", onChange:function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{tempHeat:v}));}})
 , React.createElement(SliderRow, { label:"Rain Alert", desc:"Alert when rain probability exceeds this", min:20, max:90, val:alertPrefs.rain||60, unit:"%", onChange:function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{rain:v}));}})
 , React.createElement(SliderRow, { label:"Wind Alert", desc:"Alert when wind speed exceeds this", min:10, max:60, val:alertPrefs.wind||25, unit:"mph", onChange:function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{wind:v}));}})
-, React.createElement(SliderRow, { label:"UV Alert", desc:"Alert when UV index exceeds this", min:3, max:11, val:alertPrefs.uv||8, unit:"", onChange:function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{uv:v}));}})
+, React.createElement(SliderRow, { label:"UV Alert", desc:"Alert when UV index exceeds this", min:3, max:16, val:alertPrefs.uv||8, unit:"", onChange:function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{uv:v}));}})
 , React.createElement(Toggle, { label:"Storm Risk Alerts", desc:"Alert when thunderstorm conditions likely", val:alertPrefs.storm!==false, onChange:function(v){handleSaveAlertPrefs(Object.assign({},alertPrefs,{storm:v}));}})
 , user&&React.createElement('div', { style: {fontSize:11,color:"#4a9fd4",marginTop:12}}, "Preferences synced to your account")
 )
@@ -1986,7 +1999,7 @@ React.createElement('div', { style: sectionSty}
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid "+(day.rainMm>=5?"rgba(255,34,0,0.3)":day.rain>=50?"rgba(255,136,0,0.3)":"rgba(255,255,255,0.07)")}}, React.createElement('div', { style: {fontSize:10,color:"#666",marginBottom:4,letterSpacing:1}}, "🌧️ PRECIPITATION"), React.createElement('div', { style: {fontSize:20,color:"#4a9fd4",fontWeight:"bold"}}, day.rainMm, React.createElement('span', { style: {fontSize:11,marginLeft:2}}, "mm")), React.createElement('div', { style: {fontSize:10,color:"#888",marginTop:2}}, day.rain, "% probability"), React.createElement('div', { style: {fontSize:10,color:day.rainMm>=10?"#ff2200":day.rainMm>=5?"#ff8800":day.rain>=50?"#ffcc00":"#44cc66",marginTop:4}}, day.rainMm>=10?"⛔ Heavy rain — concrete/excavation stop":day.rainMm>=5?"⚠️ Rain — painting/concrete delay":day.rain>=50?"⚠️ Rain likely — prepare covers":"✓ Precipitation low"))
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid "+(day.humidity>=90?"rgba(255,34,0,0.3)":day.humidity>=80?"rgba(255,136,0,0.3)":"rgba(255,255,255,0.07)")}}, React.createElement('div', { style: {fontSize:10,color:"#666",marginBottom:4,letterSpacing:1}}, "💧 HUMIDITY"), React.createElement('div', { style: {fontSize:20,color:"#88ddff",fontWeight:"bold"}}, day.humidity, React.createElement('span', { style: {fontSize:11,marginLeft:2}}, "%")), React.createElement('div', { style: {fontSize:10,color:"#888",marginTop:2}}, "Painting limit: 85%"), React.createElement('div', { style: {fontSize:10,color:day.humidity>=90?"#ff2200":day.humidity>=85?"#ff8800":day.humidity>=75?"#ffcc00":"#44cc66",marginTop:4}}, day.humidity>=90?"⛔ Painting/coating stop":day.humidity>=85?"⚠️ Near dew point — coating risk":day.humidity>=75?"⚠️ Check dew point":"✓ Humidity acceptable"))
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid "+(lightningRisk?"rgba(255,220,0,0.4)":"rgba(255,255,255,0.07)")}}, React.createElement('div', { style: {fontSize:10,color:"#666",marginBottom:4,letterSpacing:1}}, "⚡ LIGHTNING RISK"), React.createElement('div', { style: {fontSize:20,color:lightningRisk?"#ffdd00":"#44cc66",fontWeight:"bold"}}, lightningRisk?"ELEVATED":"LOW"), React.createElement('div', { style: {fontSize:10,color:"#888",marginTop:2}}, "Evacuation threshold"), React.createElement('div', { style: {fontSize:10,color:lightningRisk?"#ffdd00":"#44cc66",marginTop:4}}, lightningRisk?"⛔ Evacuate cranes, scaffold & roofs":"✓ No significant lightning risk"))
-, React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid "+(day.uvMax>=8?"rgba(255,80,0,0.4)":"rgba(255,255,255,0.07)")}}, React.createElement('div', { style: {fontSize:10,color:"#666",marginBottom:4,letterSpacing:1}}, "☀️ UV / HEAT STRESS"), React.createElement('div', { style: {fontSize:20,color:day.uvMax>=8?"#ff6600":day.uvMax>=6?"#ffaa00":"#88cc44",fontWeight:"bold"}}, day.uvMax!=null?day.uvMax:"—", React.createElement('span', { style: {fontSize:11,marginLeft:2}}, "UV")), React.createElement('div', { style: {fontSize:10,color:"#888",marginTop:2}}, day.temp>=28?"Heat stress risk":day.temp>=24?"Warm work conditions":"Normal"), React.createElement('div', { style: {fontSize:10,color:day.uvMax>=8?"#ff6600":day.uvMax>=6?"#ffaa00":"#44cc66",marginTop:4}}, day.uvMax>=8?"⚠️ High UV — SPF50, head cover, water mandatory":day.uvMax>=6?"⚠️ Moderate UV — sun protection required":"✓ UV acceptable", day.temp>=32?" · 🔥 Heat stress plan required":""))
+, React.createElement('div', { style: {background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",border:"1px solid "+(day.uvMax>=11?"rgba(204,0,0,0.5)":day.uvMax>=8?"rgba(255,80,0,0.4)":"rgba(255,255,255,0.07)")}}, React.createElement('div', { style: {fontSize:10,color:"#666",marginBottom:4,letterSpacing:1}}, "☀️ UV / HEAT STRESS"), React.createElement('div', { style: {fontSize:20,color:uvCol(day.uvMax||0),fontWeight:"bold"}}, day.uvMax!=null?day.uvMax:"—", React.createElement('span', { style: {fontSize:11,marginLeft:4}}, uvLbl(day.uvMax||0))), React.createElement('div', { style: {fontSize:10,color:"#888",marginTop:2}}, day.temp>=28?"Heat stress risk":day.temp>=24?"Warm work conditions":"Normal"), React.createElement('div', { style: {fontSize:10,color:uvCol(day.uvMax||0),marginTop:4}}, day.uvMax>=14?"⚠️ Extreme UV — minimize all outdoor exposure":day.uvMax>=11?"⚠️ Extreme UV — avoid all sun exposure":day.uvMax>=8?"⚠️ Very High UV — SPF50, head cover, water mandatory":day.uvMax>=6?"⚠️ High UV — sun protection required":"✓ UV acceptable", day.temp>=32?" · 🔥 Heat stress plan required":""))
 )
 ))
 , iTab==="forecast"&&(React.createElement('div', {}
@@ -4256,8 +4269,31 @@ async function fetchWeather(place){
 setSearching(true);setErr("");setClimAvg(null);
 try{
 var wR=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+place.latitude+"&longitude="+place.longitude+"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,precipitation_hours,windspeed_10m_max,windgusts_10m_max,relative_humidity_2m_mean,pressure_msl_mean,weathercode,uv_index_max&hourly=temperature_2m,weathercode,precipitation_probability,precipitation,windspeed_10m,windgusts_10m,relativehumidity_2m,pressure_msl,cloudcover,uv_index,dewpoint_2m,visibility&minutely_15=precipitation,rain,showers,weather_code&past_minutely_15=4&forecast_minutely_15=8&timezone=auto&forecast_days=13");
+// Fetch CAMS UV in parallel — CAMS uses a proper atmospheric photochemistry model
+// via Copernicus and correctly reports UV 12-20 at the equator, unlike the GFS-derived
+// UV in the main forecast API which is capped ~9 due to a simplified UVB scaling formula.
+// CAMS gives 5 days of hourly UV; we use it for days 0-4 and fall back to GFS for 5+.
+var camsPromise=fetch("https://air-quality-api.open-meteo.com/v1/air-quality?latitude="+place.latitude+"&longitude="+place.longitude+"&current=uv_index&hourly=uv_index&timezone=auto&forecast_days=5").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
 fetchClimateAverage(place.latitude,place.longitude).then(function(ca){if(ca)setClimAvg(ca);});
 var wJ=await wR.json();
+var camsJ=await camsPromise;
+// Build a map of CAMS hourly UV by ISO time string for fast lookup when merging
+var camsUvByTime={};
+var camsCurrentUv=null;
+if(camsJ){
+  if(camsJ.current&&camsJ.current.uv_index!=null)camsCurrentUv=Math.round(camsJ.current.uv_index*10)/10;
+  if(camsJ.hourly&&camsJ.hourly.time&&camsJ.hourly.uv_index){
+    camsJ.hourly.time.forEach(function(t,i){camsUvByTime[t]=camsJ.hourly.uv_index[i];});
+  }
+}
+// Derive daily CAMS UV max from the hourly CAMS array for each of the first 5 days
+function camsUvMaxForDate(dateStr){
+  var maxUv=null;
+  Object.keys(camsUvByTime).forEach(function(t){
+    if(t.startsWith(dateStr)){var v=camsUvByTime[t];if(v!=null&&(maxUv===null||v>maxUv))maxUv=v;}
+  });
+  return maxUv!=null?Math.round(maxUv):null;
+}
 var days=wJ.daily,hrs=wJ.hourly;
 var data=days.time.map(function(t,i){
 var temp=Math.round(days.temperature_2m_max[i]);
@@ -4269,10 +4305,19 @@ else if(days.precipitation_probability_max[i]<=10)cloudEst=15;
 var cond=condFromCode(code,temp,cloudEst,precipSum);
 var mph=Math.round((days.windspeed_10m_max[i]||0)*0.621371);
 var ds=new Date(t+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
-var uvMax=days.uv_index_max&&days.uv_index_max[i]!=null?Math.round(days.uv_index_max[i]):null;
+// Prefer CAMS UV (accurate, reaches 12-20 at equator) for days 0-4; fall back to GFS UV for days 5+
+var camsUv=i<5?camsUvMaxForDate(t):null;
+var gfsUv=days.uv_index_max&&days.uv_index_max[i]!=null?Math.round(days.uv_index_max[i]):null;
+var uvMax=camsUv!=null?camsUv:gfsUv;
 return{date:ds,temp:temp,low:Math.round(days.temperature_2m_min[i]),type:i<3?"confirmed":i<7?"near":"estimated",condition:cond,note:"Live forecast via Open-Meteo",wind:mph<5?"very light":mph<10?"light":mph<20?"moderate":"fresh",windMph:mph,gustMph:Math.round((days.windgusts_10m_max[i]||mph*1.3)*0.621371),rain:days.precipitation_probability_max[i]||0,humidity:Math.round(days.relative_humidity_2m_mean[i]||55),pressure:Math.round(days.pressure_msl_mean[i]||1013),rainMm:parseFloat((days.precipitation_sum[i]||0).toFixed(1)),rainHours:Math.round(days.precipitation_hours[i]||0),uvMax:uvMax};
 });
-setHr({times:hrs.time,temps:hrs.temperature_2m,codes:hrs.weathercode,windMph:hrs.windspeed_10m.map(function(v){return Math.round((v||0)*0.621371);}),gusts:hrs.windgusts_10m.map(function(v){return Math.round((v||0)*0.621371);}),rain:hrs.precipitation_probability,rainMm:hrs.precipitation,humidity:hrs.relativehumidity_2m,pressure:hrs.pressure_msl,cloud:hrs.cloudcover,uv:hrs.uv_index,dewpoint:hrs.dewpoint_2m,vis:hrs.visibility});
+// Merge CAMS hourly UV into the hourly array — replace GFS values for the first 5 days
+var mergedHourlyUv=hrs.uv_index.map(function(gfsVal,i){
+  var t=hrs.time[i];
+  var camsVal=t&&camsUvByTime[t]!=null?camsUvByTime[t]:null;
+  return camsVal!=null?camsVal:gfsVal;
+});
+setHr({times:hrs.time,temps:hrs.temperature_2m,codes:hrs.weathercode,windMph:hrs.windspeed_10m.map(function(v){return Math.round((v||0)*0.621371);}),gusts:hrs.windgusts_10m.map(function(v){return Math.round((v||0)*0.621371);}),rain:hrs.precipitation_probability,rainMm:hrs.precipitation,humidity:hrs.relativehumidity_2m,pressure:hrs.pressure_msl,cloud:hrs.cloudcover,uv:mergedHourlyUv,dewpoint:hrs.dewpoint_2m,vis:hrs.visibility});
 if(wJ.minutely_15&&wJ.minutely_15.time){setM15({times:wJ.minutely_15.time,precip:wJ.minutely_15.precipitation,rain:wJ.minutely_15.rain,showers:wJ.minutely_15.showers,codes:wJ.minutely_15.weather_code});}else{setM15(null);}
 setFd(data);
 setLat(place.latitude);setLon(place.longitude);
