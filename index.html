@@ -118,6 +118,10 @@ function bgc(t){return t>=33?"rgba(255,45,0,0.18)":t>=30?"rgba(255,100,0,0.14)":
 function uvCol(uv){return uv>=14?"#cc0000":uv>=11?"#ff1500":uv>=8?"#ff6600":uv>=6?"#ffaa00":uv>=3?"#ffcc00":uv>0?"#7bbf44":"#555";}
 function uvLbl(uv){return uv>=14?"Extreme+":uv>=11?"Extreme":uv>=8?"Very High":uv>=6?"High":uv>=3?"Moderate":uv>0?"Low":"None";}
 function uvProtect(uv){return uv>=14?"Extreme — minimize all outdoor exposure; cover all skin":uv>=11?"Extreme — avoid all sun exposure; keep skin covered":uv>=8?"Very High — protection essential; seek shade midday":uv>=6?"High — sunscreen, hat and shade essential":uv>=3?"Moderate — apply SPF30+ sunscreen":uv>0?"Low — minimal risk":"No UV";}
+// European AQI scale (0-100+): Good 0-20, Fair 20-40, Moderate 40-60, Poor 60-80, Very Poor 80-100, Extremely Poor 100+
+function aqiCol(v){if(v==null)return"#555";return v>=100?"#7700cc":v>=80?"#cc0000":v>=60?"#ff4400":v>=40?"#ff9900":v>=20?"#ffdd00":"#44cc66";}
+function aqiLbl(v){if(v==null)return"Unknown";return v>=100?"Extremely Poor":v>=80?"Very Poor":v>=60?"Poor":v>=40?"Moderate":v>=20?"Fair":"Good";}
+function aqiAdvice(v){if(v==null)return"";return v>=100?"Extremely poor — avoid all outdoor exertion. Sensitive groups stay indoors.":v>=80?"Very poor — avoid prolonged outdoor activity. Sensitive groups indoors.":v>=60?"Poor — reduce outdoor activity, especially strenuous exercise.":v>=40?"Moderate — sensitive individuals should reduce prolonged outdoor exposure.":v>=20?"Fair — generally acceptable. Unusually sensitive people may notice mild effects.":"Good — air quality is satisfactory.";}
 
 function windCat(mph){
   if(mph<5)return "Very Light";if(mph<10)return "Light Breeze";if(mph<15)return "Moderate Breeze";
@@ -799,6 +803,7 @@ React.createElement('div', { id:"daycard-"+i, onClick: function(){setSel(sel===i
 )
 , React.createElement('div', { style: {textAlign:"right"}}
 , React.createElement('span', { style: {fontSize:20}}, d.condition)
+, (function(){var mp=moonPhaseName(moonPhase(d.date));return React.createElement('div', {style:{fontSize:11,marginTop:1,color:"#888"}}, mp.icon+" ",React.createElement('span',{style:{fontSize:9,color:"#555"}},mp.name==="Full Moon"||mp.name==="New Moon"?mp.name:""));})()
 , storm&&React.createElement('div', { style: {fontSize:9,color:"#ffcc00",marginTop:1}}, "storm risk" )
 )
 )
@@ -951,7 +956,7 @@ setLoading(true);
 // GFS-derived UV in the main API is capped ~9 due to simplified UVB scaling.
 Promise.all([
   fetch("https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,windgusts_10m,relativehumidity_2m,pressure_msl,cloudcover,uv_index,precipitation,is_day&timezone=auto").then(function(r){return r.json();}),
-  fetch("https://air-quality-api.open-meteo.com/v1/air-quality?latitude="+lat+"&longitude="+lon+"&current=uv_index&timezone=auto").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+  fetch("https://air-quality-api.open-meteo.com/v1/air-quality?latitude="+lat+"&longitude="+lon+"&current=uv_index,pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
 ])
 .then(function(results){
 var j=results[0],camsJ=results[1];
@@ -969,6 +974,13 @@ var gust=Math.round((c.windgusts_10m||mph*1.3)*0.621371);
 // Prefer CAMS UV for accuracy at all latitudes; fall back to GFS value
 var camsUv=camsJ&&camsJ.current&&camsJ.current.uv_index!=null?camsJ.current.uv_index:null;
 var uv=camsUv!=null?Math.round(camsUv*10)/10:Math.round(c.uv_index||0);
+var aqi=camsJ&&camsJ.current?{
+  eaqi:camsJ.current.european_aqi!=null?Math.round(camsJ.current.european_aqi):null,
+  pm25:camsJ.current.pm2_5!=null?Math.round(camsJ.current.pm2_5*10)/10:null,
+  pm10:camsJ.current.pm10!=null?Math.round(camsJ.current.pm10*10)/10:null,
+  no2:camsJ.current.nitrogen_dioxide!=null?Math.round(camsJ.current.nitrogen_dioxide*10)/10:null,
+  o3:camsJ.current.ozone!=null?Math.round(camsJ.current.ozone*10)/10:null
+}:null;
 var hum=Math.round(c.relativehumidity_2m||50);
 var pres=Math.round(c.pressure_msl||1013);
 var fl=Math.round(c.apparent_temperature||temp);
@@ -976,7 +988,7 @@ var hi=null;
 if(hasSun(cond)&&temp>=27){hi=sunFeel(temp,mph,hum,cond);}
 var strikeDensity=null;
 if(cond.includes("⛈")){var instability=Math.max(0,(temp-25)*0.3+(hum-50)*0.1);strikeDensity=Math.round(instability*10)/10;}
-setCur({temp:temp,feelsLike:fl,condition:cond,windMph:mph,gustMph:gust,humidity:hum,pressure:pres,uv:uv,cloud:cloud,precip:precip,isDay:isDay,heatIndex:hi,strikeDensity:strikeDensity,code:code});
+setCur({temp:temp,feelsLike:fl,condition:cond,windMph:mph,gustMph:gust,humidity:hum,pressure:pres,uv:uv,cloud:cloud,precip:precip,isDay:isDay,heatIndex:hi,strikeDensity:strikeDensity,code:code,aqi:aqi});
 setLoading(false);
 })
 .catch(function(){setLoading(false);});
@@ -1003,9 +1015,82 @@ React.createElement('div', { style: {background:"linear-gradient(135deg,rgba(255
 return React.createElement('div', { key: i, style: {background:"rgba(0,0,0,0.25)",borderRadius:10,padding:"8px 10px"}}, React.createElement('div', { style: {fontSize:10,color:"#555",marginBottom:3}}, item.icon, " ", item.label), React.createElement('div', { style: {fontSize:13,fontWeight:"bold",color:item.col,lineHeight:1.2}}, item.val), React.createElement('div', { style: {fontSize:9,color:"#555",marginTop:2}}, item.sub));
 })
 )
+, React.createElement(AirQualityPanel, {aqi:iCur.aqi})
 )
 );
 }
+function AirQualityPanel(props){
+var aqi=props.aqi;
+if(!aqi||aqi.eaqi==null)return null;
+var col=aqiCol(aqi.eaqi);
+var lbl=aqiLbl(aqi.eaqi);
+var advice=aqiAdvice(aqi.eaqi);
+var pct=Math.min(100,Math.round(aqi.eaqi));
+return(
+React.createElement('div', {style:{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:14,padding:"14px 16px",marginBottom:16}}
+, React.createElement('div', {style:{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}
+  , React.createElement('span', {style:{fontSize:16}}, "🌫️")
+  , React.createElement('span', {style:{fontSize:11,letterSpacing:2,color:"#aaa",textTransform:"uppercase",fontWeight:"bold"}}, "Air Quality")
+  , React.createElement('span', {style:{marginLeft:"auto",fontSize:12,color:col,fontWeight:"bold"}}, lbl)
+  , React.createElement('span', {style:{fontSize:11,color:col,padding:"2px 8px",border:"1px solid "+col+"44",borderRadius:8}}, aqi.eaqi+" EAQI")
+)
+, React.createElement('div', {style:{height:6,background:"rgba(255,255,255,0.06)",borderRadius:3,marginBottom:10,overflow:"hidden"}}
+  , React.createElement('div', {style:{width:pct+"%",height:"100%",background:"linear-gradient(to right,#44cc66,#ffdd00,#ff9900,#ff4400,#cc0000,#7700cc)",borderRadius:3,transition:"width 0.5s"}})
+)
+, React.createElement('div', {style:{fontSize:11,color:"#777",lineHeight:1.55,marginBottom:8}}, advice)
+, React.createElement('div', {style:{display:"flex",gap:10,flexWrap:"wrap"}},
+  [
+    aqi.pm25!=null&&{icon:"💨",label:"PM2.5",val:aqi.pm25+" μg/m³",note:"Fine particles",col:aqi.pm25>=75?"#ff4400":aqi.pm25>=25?"#ff9900":aqi.pm25>=10?"#ffdd00":"#44cc66"},
+    aqi.pm10!=null&&{icon:"💨",label:"PM10",val:aqi.pm10+" μg/m³",note:"Coarse particles",col:aqi.pm10>=150?"#ff4400":aqi.pm10>=50?"#ff9900":aqi.pm10>=20?"#ffdd00":"#44cc66"},
+    aqi.no2!=null&&{icon:"🏭",label:"NO₂",val:aqi.no2+" μg/m³",note:"Nitrogen dioxide",col:aqi.no2>=200?"#ff4400":aqi.no2>=70?"#ff9900":aqi.no2>=40?"#ffdd00":"#44cc66"},
+    aqi.o3!=null&&{icon:"🌀",label:"O₃",val:aqi.o3+" μg/m³",note:"Ozone",col:aqi.o3>=180?"#ff4400":aqi.o3>=120?"#ff9900":aqi.o3>=60?"#ffdd00":"#44cc66"},
+  ].filter(Boolean).map(function(p,i){return React.createElement('div', {key:i,style:{background:"rgba(255,255,255,0.03)",borderRadius:9,padding:"7px 10px",border:"1px solid rgba(255,255,255,0.07)",minWidth:80}}
+    , React.createElement('div', {style:{fontSize:9,color:"#555",marginBottom:2}}, p.icon+" "+p.label)
+    , React.createElement('div', {style:{fontSize:12,color:p.col,fontWeight:"bold"}}, p.val)
+    , React.createElement('div', {style:{fontSize:9,color:"#444"}}, p.note)
+  );})
+)
+, React.createElement('div', {style:{fontSize:9,color:"#444",marginTop:8}}, "Source: Copernicus CAMS via Open-Meteo · European AQI scale")
+)
+);
+}
+
+function BestDayBanner(props){
+var forecastData=props.forecastData,u=props.u,onJump=props.onJump;
+if(!forecastData||forecastData.length<2)return null;
+// Score each day for outdoor suitability — lower rain, mild wind, comfortable temp, low UV
+function scoreDay(d,i){
+  if(d.rain>=70||d.rainMm>=15||d.windMph>=30)return -1; // disqualify
+  var tempScore=d.temp>=16&&d.temp<=28?20:d.temp>=12&&d.temp<=32?12:d.temp>=8?5:0;
+  var rainScore=d.rain<=10?25:d.rain<=20?20:d.rain<=35?13:d.rain<=50?6:0;
+  var windScore=d.windMph<=10?20:d.windMph<=18?15:d.windMph<=25?8:3;
+  var uvScore=d.uvMax==null?5:(d.uvMax<=3?15:d.uvMax<=6?12:d.uvMax<=8?8:d.uvMax<=11?4:1);
+  var sunScore=hasSun(d.condition)?10:d.condition.includes("⛅")?5:0;
+  var leadPenalty=i>4?3:i>2?1:0;
+  return tempScore+rainScore+windScore+uvScore+sunScore-leadPenalty;
+}
+var scored=forecastData.slice(0,7).map(function(d,i){return{d:d,i:i,score:scoreDay(d,i)};}).filter(function(x){return x.score>0;}).sort(function(a,b){return b.score-a.score;});
+if(scored.length===0)return null;
+var best=scored[0];
+var reasons=[];
+if(best.d.rain<=15)reasons.push("low rain chance ("+best.d.rain+"%)");
+if(best.d.windMph<=12)reasons.push("light winds ("+best.d.windMph+"mph)");
+if(best.d.temp>=16&&best.d.temp<=26)reasons.push("pleasant temperature ("+fmtTemp(best.d.temp,u.temp)+")");
+if(hasSun(best.d.condition))reasons.push("sunny spells");
+if(best.d.uvMax!=null&&best.d.uvMax<=6)reasons.push("manageable UV ("+best.d.uvMax+")");
+return(
+React.createElement('div', {onClick:function(){onJump&&onJump(best.i);},style:{background:"linear-gradient(90deg,rgba(68,200,80,0.10) 0%,rgba(68,200,80,0.03) 100%)",border:"1px solid rgba(68,200,80,0.25)",borderRadius:14,padding:"12px 16px",marginBottom:16,cursor:onJump?"pointer":"default"}}
+, React.createElement('div', {style:{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}
+  , React.createElement('span', {style:{fontSize:16}}, "✨")
+  , React.createElement('span', {style:{fontSize:11,letterSpacing:2,color:"#44cc66",textTransform:"uppercase",fontWeight:"bold"}}, "Best Day This Week")
+  , React.createElement('span', {style:{fontSize:12,color:"#44cc66",fontWeight:"bold",marginLeft:"auto"}}, best.d.date)
+)
+, React.createElement('div', {style:{fontSize:12,color:"#c0d4b0",lineHeight:1.55}}, best.d.condition+" "+fmtTemp(best.d.temp,u.temp)+" · "+reasons.join(" · "))
+, onJump&&React.createElement('div', {style:{fontSize:10,color:"#44cc66",marginTop:4}}, "Tap to see details →")
+)
+);
+}
+
 function HeatwaveSummaryBanner(props){
 var forecastData=props.forecastData,u=props.u,onJump=props.onJump,climAvg=props.climAvg;
 var ranked=forecastData.map(function(d,i){return {d:d,i:i,hw:heatwaveUnderestimate(d,i,i>0?forecastData[i-1]:null,climAvg)};}).filter(function(r){return r.hw.level==="high"||r.hw.level==="severe";}).sort(function(a,b){return b.hw.score-a.hw.score;});
@@ -1176,7 +1261,7 @@ React.createElement('div', {style:{marginBottom:20}}
 );
 }
 function WeatherOverview(props){
-var forecastData=props.forecastData,locationName=props.locationName,units=props.u,hourlyRaw=props.hourlyRaw,lat=props.lat,lon=props.lon,climAvg=props.climAvg;
+var forecastData=props.forecastData,locationName=props.locationName,units=props.u,hourlyRaw=props.hourlyRaw,lat=props.lat,lon=props.lon,climAvg=props.climAvg,onShare=props.onShare;
 var u=units;
 var sel=useState(null);var iSel=sel[0];var setSel=sel[1];
 var graph=useState("temp");var iGraph=graph[0];var setGraph=graph[1];
@@ -1213,7 +1298,51 @@ React.createElement('div', {}
   );
 })()
 , React.createElement(WeatherWarningsPanel, { locationName: locationName, forecastData: forecastData, climAvg: climAvg})
-, React.createElement(HeatwaveSummaryBanner, { forecastData: forecastData, u: u, climAvg: climAvg, onJump: function(idx){setSel(idx);setDetailV("heatwave");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}}), React.createElement('div', { style: panel}
+, React.createElement(BestDayBanner, { forecastData: forecastData, u: u, onJump: function(idx){setSel(idx);setDetailV("daily");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}})
+, React.createElement(HeatwaveSummaryBanner, { forecastData: forecastData, u: u, climAvg: climAvg, onJump: function(idx){setSel(idx);setDetailV("heatwave");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}})
+, (function(){
+  // Week at a glance — hottest, wettest, windiest day this week
+  if(!forecastData||forecastData.length<3)return null;
+  var week=forecastData.slice(0,7);
+  var hottest=week.reduce(function(a,b){return b.temp>a.temp?b:a;});
+  var wettest=week.reduce(function(a,b){return b.rainMm>a.rainMm?b:a;});
+  var windiest=week.reduce(function(a,b){return b.windMph>a.windMph?b:a;});
+  var avgTemp=Math.round(week.reduce(function(s,d){return s+d.temp;},0)/week.length);
+  // Auto narrative
+  var narrative=(function(){
+    var parts=[];
+    var rainyDays=week.filter(function(d){return d.rain>=50;}).length;
+    var hotDays=week.filter(function(d){return d.temp>=(climAvg&&climAvg.avgHigh?climAvg.avgHigh+4:30);}).length;
+    var frostNights=week.filter(function(d){return d.low<=0;}).length;
+    if(hotDays>=3)parts.push("A hot week ahead");
+    else if(frostNights>=2)parts.push("Frosty nights expected");
+    else if(rainyDays>=4)parts.push("A predominantly wet week");
+    else if(rainyDays>=2)parts.push("A mixed week");
+    else parts.push("A mainly dry week");
+    parts.push("with highs peaking at "+fmtTemp(hottest.temp,u.temp)+" on "+hottest.date.split(" ").slice(0,2).join(" "));
+    if(wettest.rainMm>=5)parts.push("and "+fmtRain(wettest.rainMm,u.rain)+" of rain possible "+wettest.date.split(" ").slice(0,2).join(" "));
+    if(windiest.windMph>=25)parts.push("· Breezy at times ("+fmtSpd(windiest.windMph,u.speed)+" on "+windiest.date.split(" ").slice(0,2).join(" ")+")");
+    return parts.join(", ")+".";
+  })();
+  var glanceItems=[
+    {icon:"🔥",label:"Warmest",val:fmtTemp(hottest.temp,u.temp),sub:hottest.date.split(" ").slice(0,2).join(" "),col:tc(hottest.temp)},
+    {icon:"🌧️",label:"Most Rain",val:wettest.rainMm>0?fmtRain(wettest.rainMm,u.rain):"None",sub:wettest.date.split(" ").slice(0,2).join(" "),col:rc(wettest.rain)},
+    {icon:"💨",label:"Windiest",val:fmtSpd(windiest.windMph,u.speed),sub:windiest.date.split(" ").slice(0,2).join(" "),col:wc(windiest.windMph)},
+    {icon:"🌡️",label:"Avg High",val:fmtTemp(avgTemp,u.temp),sub:"7-day average",col:tc(avgTemp)},
+  ];
+  return React.createElement('div', {style:{marginBottom:16}}
+    , React.createElement('div', {style:{fontSize:12,color:"#7a8a6a",lineHeight:1.6,marginBottom:12,padding:"10px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,fontStyle:"italic"}}, "📋 "+narrative)
+    , React.createElement('div', {style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}
+      , glanceItems.map(function(g,i){return React.createElement('div', {key:i,style:{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"9px 10px",textAlign:"center"}}
+        , React.createElement('div', {style:{fontSize:14,marginBottom:3}}, g.icon)
+        , React.createElement('div', {style:{fontSize:9,color:"#555",marginBottom:2,textTransform:"uppercase",letterSpacing:1}}, g.label)
+        , React.createElement('div', {style:{fontSize:13,fontWeight:"bold",color:g.col}}, g.val)
+        , React.createElement('div', {style:{fontSize:9,color:"#444",marginTop:1}}, g.sub)
+      );})
+    )
+  );
+})()
+, React.createElement('div', { style: panel}
 , React.createElement('div', { style: {display:"flex",gap:5,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}
 , tabs.map(function(t){var on=iGraph===t.id;return React.createElement('button', { key: t.id, onClick: function(){setGraph(t.id);setSel(null);}, style: {padding:"5px 10px",borderRadius:20,border:"1px solid",borderColor:on?"#ff7700":"rgba(255,255,255,0.12)",background:on?"rgba(255,119,0,0.18)":"rgba(255,255,255,0.03)",color:on?"#ffaa44":"#888",fontSize:11,cursor:"pointer"}}, t.label);})
 , iSel!==null&&React.createElement('div', { style: {marginLeft:"auto",fontSize:11,color:"#aaa"}}, React.createElement('span', { style: {color:"#fff",fontWeight:"bold"}}, forecastData[iSel].date), " ", React.createElement('span', { style: {color:tc(forecastData[iSel].temp)}}, fmtTemp(forecastData[iSel].temp,u.temp)))
@@ -1232,7 +1361,10 @@ React.createElement('div', {}
 , forecastData.map(function(d,i){return React.createElement(DayCard, { key: i, d: d, i: i, prevDay: i>0?forecastData[i-1]:null, sel: iSel, setSel: setSel, u: u, detailView: iDetailV, setDetailView: setDetailV, climAvg: climAvg});})
 )
 , React.createElement('div', { style: {marginTop:28,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"18px"}}
-, React.createElement('div', { style: {fontSize:11,letterSpacing:4,color:"#ff7700",textTransform:"uppercase",marginBottom:14}}, "About This Forecast")
+, React.createElement('div', {style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:14}}
+  , React.createElement('div', { style: {fontSize:11,letterSpacing:4,color:"#ff7700",textTransform:"uppercase"}}, "About This Forecast")
+  , onShare&&React.createElement('button', {onClick:onShare,style:{display:"flex",alignItems:"center",gap:5,padding:"6px 14px",borderRadius:10,border:"1px solid rgba(255,119,0,0.35)",background:"rgba(255,119,0,0.10)",color:"#ffaa44",fontSize:11,cursor:"pointer"}}, "📤 Share Forecast Card")
+)
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:14}}
 , [{icon:"📊",title:"13-Day Outlook",text:"Forecast covers 13 days. The first 3 days are high confidence. Days 4-7 are near-term estimates. Beyond day 7, treat as indicative only."},{icon:"🌡️",title:"Feel-Like Temps",text:"Feels-like temperatures account for wind chill, humidity and solar radiation. In sun vs shade can differ by 10°C or more on hot days."},{icon:"💧",title:"Rainfall Data",text:"Rain chance is the probability of any measurable rainfall. The mm figure is the expected total if rain falls. Both are shown for each day."},{icon:"💨",title:"Wind Forecasts",text:"Wind speeds are 10m surface winds. Gusts can be significantly higher. Strong Breeze (20-30 mph) can affect outdoor activities."},{icon:"🌍",title:"Data Source",text:"Forecasts are powered by Open-Meteo, a free and open weather API using ECMWF and other model data updated hourly."},{icon:"⚡",title:"Storm Risk",text:"Storm risk is flagged when temperature exceeds 28°C and humidity exceeds 50%, creating convective instability conditions."},{icon:"🔥",title:"Heatwave Underestimation",text:"Days that run meaningfully hotter than the local seasonal average are checked against night temperatures, cloud cover, days-out lead time, pressure and humidity — factors that commonly cause forecasts to undercook real-world heat. This is anchored to your location's normal climate, so a hot day somewhere that's always hot (e.g. Ahvaz in summer) won't be flagged, while the same temperature somewhere unusually warm (e.g. London) will be."}].map(function(r,i){return React.createElement('div', { key: i, style: {display:"flex",gap:12}}, React.createElement('span', { style: {fontSize:22,flexShrink:0}}, r.icon), React.createElement('div', {}, React.createElement('div', { style: {fontSize:13,color:"#e8dcc8",fontWeight:"bold",marginBottom:4}}, r.title), React.createElement('div', { style: {fontSize:12,color:"#7a6e5e",lineHeight:1.55}}, r.text)));})
 )
@@ -1441,6 +1573,14 @@ function xOf(i){return padL+i*step;}
 function yOf(v){return padT+chartH-((v-minV)/range)*chartH;}
 var pathD=points.map(function(p,i){return (i===0?"M":"L")+xOf(i).toFixed(1)+","+yOf(p.val).toFixed(1);}).join(" ");
 var areaD=pathD+" L"+xOf(points.length-1).toFixed(1)+","+(padT+chartH)+" L"+padL+","+(padT+chartH)+" Z";
+// Feels-like overlay for temp graph
+var feelsPoints=iAg==="temp"?(iUh&&hasHourly?points.map(function(p,ii){
+  var hum=hourlyRaw.humidity[ii]||55;
+  var wind=hourlyRaw.windMph[ii]||0;
+  var cond=condFromCode(hourlyRaw.codes[ii]||0,p.val,hum,0);
+  return {val:shadeFeel(p.val,wind,hum,cond)};
+}):forecastData.map(function(d){return {val:shadeFeel(d.temp,d.windMph,d.humidity,d.condition)};})):null;
+var feelsPathD=feelsPoints?feelsPoints.map(function(p,i){return (i===0?"M":"L")+xOf(i).toFixed(1)+","+yOf(p.val).toFixed(1);}).join(" "):null;
 var ySteps=4,yLabels=[];
 for(var yi=0;yi<=ySteps;yi++){var yv=minV+(range*yi/ySteps);yLabels.push({y:yOf(yv),val:Math.round(yv)});}
 var xEvery=iUh?Math.ceil(points.length/14):1;
@@ -1460,13 +1600,18 @@ React.createElement('div', {}
 , React.createElement('defs', {}, React.createElement('linearGradient', { id: "ag", x1: "0", y1: "0", x2: "0", y2: "1"}, React.createElement('stop', { offset: "0%", stopColor: colV(maxV), stopOpacity: "0.3"}), React.createElement('stop', { offset: "100%", stopColor: colV(maxV), stopOpacity: "0.02"})))
 , React.createElement('path', { d: areaD, fill: "url(#ag)"})
 , React.createElement('path', { d: pathD, fill: "none", stroke: colV(maxV), strokeWidth: "2", strokeLinejoin: "round"})
+, feelsPathD&&React.createElement('path', { d: feelsPathD, fill: "none", stroke: "#4a9fd4", strokeWidth: "1.5", strokeLinejoin: "round", strokeDasharray: "5,3", opacity: "0.7"})
 , peaks.map(function(pi){return React.createElement('g', { key: "pk"+pi}, React.createElement('circle', { cx: xOf(pi), cy: yOf(points[pi].val), r: "4", fill: colV(points[pi].val), opacity: "0.9"}), React.createElement('text', { x: xOf(pi), y: yOf(points[pi].val)-8, textAnchor: "middle", fontSize: "9", fill: colV(points[pi].val), fontWeight: "bold"}, fmtV(points[pi].val)), React.createElement('text', { x: xOf(pi), y: yOf(points[pi].val)-18, textAnchor: "middle", fontSize: "8", fill: "#888"}, "Peak"));})
 , troughs.map(function(ti){return React.createElement('g', { key: "tr"+ti}, React.createElement('circle', { cx: xOf(ti), cy: yOf(points[ti].val), r: "3", fill: "#4a9fd4", opacity: "0.9"}), React.createElement('text', { x: xOf(ti), y: yOf(points[ti].val)+16, textAnchor: "middle", fontSize: "9", fill: "#4a9fd4"}, fmtV(points[ti].val)));})
 , iHov!==null&&React.createElement('g', {}, React.createElement('line', { x1: xOf(iHov), y1: padT, x2: xOf(iHov), y2: padT+chartH, stroke: "rgba(255,255,255,0.2)", strokeWidth: "1", strokeDasharray: "4,3"}), React.createElement('circle', { cx: xOf(iHov), cy: yOf(points[iHov].val), r: "5", fill: colV(points[iHov].val), stroke: "#fff", strokeWidth: "1.5"}))
 , points.map(function(p,i){return React.createElement('rect', { key: i, x: xOf(i)-step/2, y: padT, width: step, height: chartH, fill: "transparent", onMouseEnter: function(){setHov(i);}, onClick: function(){setHov(iHov===i?null:i);}, style: {cursor:"crosshair"}});})
 , points.map(function(p,i){if(i%xEvery!==0)return null;var lb=iUh?p.label.split(" ")[0]:p.label.split(" ").slice(0,2).join(" ");return React.createElement('text', { key: i, x: xOf(i), y: svgH-4, textAnchor: "middle", fontSize: "8", fill: "#555", transform: "rotate(-30,"+xOf(i)+","+(svgH-4)+")"}, lb);})
 )
-, iHov!==null&&React.createElement('div', { style: {textAlign:"center",padding:"6px 0 2px",fontSize:12,color:"#ccc"}}, React.createElement('span', { style: {color:"#888"}}, points[iHov].label), React.createElement('span', { style: {color:colV(points[iHov].val),fontWeight:"bold",marginLeft:10,fontSize:16}}, fmtV(points[iHov].val)), !iUh&&points[iHov].condition&&React.createElement('span', { style: {marginLeft:8,fontSize:18}}, points[iHov].condition))
+, iHov!==null&&React.createElement('div', { style: {textAlign:"center",padding:"6px 0 2px",fontSize:12,color:"#ccc"}}, React.createElement('span', { style: {color:"#888"}}, points[iHov].label), React.createElement('span', { style: {color:colV(points[iHov].val),fontWeight:"bold",marginLeft:10,fontSize:16}}, fmtV(points[iHov].val)), feelsPoints&&React.createElement('span', {style:{color:"#4a9fd4",marginLeft:8,fontSize:13}}, "feels "+fmtV(feelsPoints[iHov].val)), !iUh&&points[iHov].condition&&React.createElement('span', { style: {marginLeft:8,fontSize:18}}, points[iHov].condition))
+, feelsPathD&&React.createElement('div', {style:{display:"flex",gap:14,justifyContent:"center",padding:"4px 0",fontSize:10,color:"#555"}}
+  , React.createElement('span', {}, React.createElement('span', {style:{color:colV(maxV)}}, "— "), "Temperature")
+  , React.createElement('span', {}, React.createElement('span', {style:{color:"#4a9fd4"}},"- - "), "Feels like (shade)")
+)
 )
 , React.createElement('div', { style: {background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"12px 14px",marginBottom:16}}
 , React.createElement('div', { style: {fontSize:11,color:"#888",marginBottom:10,letterSpacing:2,textTransform:"uppercase"}}, "Conditions — Next 14 Days")
@@ -4740,7 +4885,7 @@ var wR=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+place.lati
 // via Copernicus and correctly reports UV 12-20 at the equator, unlike the GFS-derived
 // UV in the main forecast API which is capped ~9 due to a simplified UVB scaling formula.
 // CAMS gives 5 days of hourly UV; we use it for days 0-4 and fall back to GFS for 5+.
-var camsPromise=fetch("https://air-quality-api.open-meteo.com/v1/air-quality?latitude="+place.latitude+"&longitude="+place.longitude+"&current=uv_index&hourly=uv_index&timezone=auto&forecast_days=5").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+var camsPromise=fetch("https://air-quality-api.open-meteo.com/v1/air-quality?latitude="+place.latitude+"&longitude="+place.longitude+"&current=uv_index,pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&hourly=uv_index,pm2_5,european_aqi&timezone=auto&forecast_days=5").then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
 fetchClimateAverage(place.latitude,place.longitude).then(function(ca){if(ca)setClimAvg(ca);});
 var wJ=await wR.json();
 var camsJ=await camsPromise;
@@ -4851,7 +4996,7 @@ React.createElement('div', {}
 , iRoles.includes("ski")&&React.createElement(SkiDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iRoles.includes("hiking")&&React.createElement(HikingDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iRoles.includes("aviation")&&React.createElement(AviationDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,hourlyRaw:iHr,u:u})
-, iAp==="overview"&&React.createElement(WeatherOverview, {forecastData:iFd,locationName:iLn,u:u,hourlyRaw:iHr,lat:iLat,lon:iLon,climAvg:iClimAvg})
+, iAp==="overview"&&React.createElement(WeatherOverview, {forecastData:iFd,locationName:iLn,u:u,hourlyRaw:iHr,lat:iLat,lon:iLon,climAvg:iClimAvg,onShare:function(){setShowShare(true);}})
 , iAp==="ten"&&React.createElement(TenDayForecast, {forecastData:iFd,u:u,climAvg:iClimAvg})
 , iAp==="hourly"&&React.createElement(HourlyForecast, {forecastData:iFd,hourlyRaw:iHr,u:u})
 , iAp==="graphs"&&React.createElement(WeatherGraphs, {forecastData:iFd,hourlyRaw:iHr,u:u})
