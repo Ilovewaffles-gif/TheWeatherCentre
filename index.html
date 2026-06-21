@@ -2585,32 +2585,68 @@ useEffect(function(){
 if(!lat||!lon)return;
 setLoading(true);setErr("");
 var levelVars=LEVELS.map(function(p){return ["temperature_"+p+"hPa","dewpoint_"+p+"hPa","relative_humidity_"+p+"hPa","windspeed_"+p+"hPa","winddirection_"+p+"hPa"].join(",");}).join(",");
-var url="https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&hourly="+levelVars+",cape,convective_inhibition&daily=cape_max&current_weather=true&timezone=auto&forecast_days=1";
+// Fetch 7 days of hourly upper-air data — this gives real sounding data for every day
+// not just today. We take the 12Z (noon local) hour for each day as the peak profile.
+var url="https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&hourly="+levelVars+",cape,convective_inhibition,freezing_level_height&daily=cape_max,precipitation_sum,precipitation_probability_max&current_weather=true&timezone=auto&forecast_days=7";
 fetch(url).then(function(r){return r.json();}).then(function(j){
 var now=new Date();var hr=now.getHours();var h=j.hourly;
-var levels=LEVELS.map(function(p){
-var T=h["temperature_"+p+"hPa"]?h["temperature_"+p+"hPa"][hr]:null;
-var Td=h["dewpoint_"+p+"hPa"]?h["dewpoint_"+p+"hPa"][hr]:null;
-var rh=h["relative_humidity_"+p+"hPa"]?h["relative_humidity_"+p+"hPa"][hr]:null;
-var ws=h["windspeed_"+p+"hPa"]?h["windspeed_"+p+"hPa"][hr]:null;
-var wd=h["winddirection_"+p+"hPa"]?h["winddirection_"+p+"hPa"][hr]:null;
-var wsKt=ws!=null?Math.round(ws*0.539957):null;
-return {p:p,T:T,Td:Td,rh:rh,windSpd:wsKt,windDir:wd};
+// Helper: extract levels at a given hourly index
+function levelsAtHr(hIdx){
+  return LEVELS.map(function(p){
+    var T=h["temperature_"+p+"hPa"]?h["temperature_"+p+"hPa"][hIdx]:null;
+    var Td=h["dewpoint_"+p+"hPa"]?h["dewpoint_"+p+"hPa"][hIdx]:null;
+    var rh=h["relative_humidity_"+p+"hPa"]?h["relative_humidity_"+p+"hPa"][hIdx]:null;
+    var ws=h["windspeed_"+p+"hPa"]?h["windspeed_"+p+"hPa"][hIdx]:null;
+    var wd=h["winddirection_"+p+"hPa"]?h["winddirection_"+p+"hPa"][hIdx]:null;
+    var wsKt=ws!=null?Math.round(ws*0.539957):null;
+    return {p:p,T:T,Td:Td,rh:rh,windSpd:wsKt,windDir:wd};
+  });
+}
+// Helper: compute indices from a set of levels + cape/cin values
+function indicesFromLevels(lvls,capeVal,cinVal){
+  var l500=lvls.find(function(l){return l.p===500;});
+  var l850=lvls.find(function(l){return l.p===850;});
+  var l1000=lvls.find(function(l){return l.p===1000;});
+  var li=null;
+  if(l500&&l850&&l500.T!=null&&l850.T!=null&&l850.Td!=null){li=liftedIndex(l500.T,l850.Td,l850.T);}
+  var srh=null;
+  if(l850&&l1000&&l850.windSpd!=null&&l1000.windSpd!=null){
+    var du=(l850.windSpd-l1000.windSpd)*Math.sin(((l850.windDir||0)-(l1000.windDir||0))*Math.PI/180);
+    var dv=(l850.windSpd-l1000.windSpd)*Math.cos(((l850.windDir||0)-(l1000.windDir||0))*Math.PI/180);
+    srh=Math.round(Math.abs(du*dv)*50);
+  }
+  var wbSfc=l1000&&l1000.T!=null&&l1000.Td!=null?wetBulb(l1000.T,l1000.Td,1000):null;
+  return {levels:lvls,cape:capeVal,cin:cinVal,li:li!=null?li.toFixed(1):null,srh:srh,wbSfc:wbSfc!=null?wbSfc.toFixed(1):null};
+}
+// Current hour — used for "today" live display
+var curLevels=levelsAtHr(hr);
+var curCape=h.cape?h.cape[hr]:null;
+var curCin=h.convective_inhibition?h.convective_inhibition[hr]:null;
+var curIndices=indicesFromLevels(curLevels,curCape,curCin);
+// Per-day data: for each of 7 days pick the 12Z hour (index = day*24+12)
+// This gives a proper noon sounding — the scientifically standard reference time
+var days7=Array.from({length:7},function(_,di){
+  var hIdx=di*24+12; // noon local hour for day di
+  var lvls=levelsAtHr(hIdx);
+  // Peak CAPE for the day = max across all 24 hours of that day
+  var dayCapeArr=h.cape?h.cape.slice(di*24,(di+1)*24).filter(function(v){return v!=null;}):[];
+  var peakCape=dayCapeArr.length?Math.max.apply(null,dayCapeArr):null;
+  var noon12Cape=h.cape?h.cape[hIdx]:null;
+  var noon12Cin=h.convective_inhibition?h.convective_inhibition[hIdx]:null;
+  var idx=indicesFromLevels(lvls,noon12Cape,noon12Cin);
+  return Object.assign({},idx,{peakCape:peakCape,hIdx:hIdx});
 });
-var cape=h.cape?h.cape[hr]:null;
-var cin=h.convective_inhibition?h.convective_inhibition[hr]:null;
-var l500=levels.find(function(l){return l.p===500;});
-var l850=levels.find(function(l){return l.p===850;});
-var li=null;
-if(l500&&l850&&l500.T!=null&&l850.T!=null&&l850.Td!=null){li=liftedIndex(l500.T,l850.Td,l850.T);}
-var l1000=levels.find(function(l){return l.p===1000;});
-var srh=null;
-if(l850&&l1000&&l850.windSpd!=null&&l1000.windSpd!=null){var du=(l850.windSpd-l1000.windSpd)*Math.sin((l850.windDir-l1000.windDir||0)*Math.PI/180);var dv=(l850.windSpd-l1000.windSpd)*Math.cos((l850.windDir-l1000.windDir||0)*Math.PI/180);srh=Math.round(Math.abs(du*dv)*50);}
-var wbSfc=l1000&&l1000.T!=null&&l1000.Td!=null?wetBulb(l1000.T,l1000.Td,1000):null;
-var dailyCape=(forecastData||[]).slice(0,7).map(function(d){if(h.cape&&h.cape.length>0){var dayStart=(new Date(d.date).getDay())*24;var slice=h.cape.slice(dayStart,dayStart+24).filter(function(v){return v!=null;});if(slice.length>0)return Math.max.apply(null,slice);}return d.condition.includes("⛈")?1500:d.condition.includes("🌧")?200:d.temp>28&&d.humidity>65?800:d.temp>24?300:50;});
-setData({levels:levels,cape:cape,cin:cin,li:li?li.toFixed(1):null,srh:srh,wbSfc:wbSfc?wbSfc.toFixed(1):null,dailyCape:dailyCape});
+setData({
+  // Today live (current hour)
+  levels:curIndices.levels,cape:curIndices.cape,cin:curIndices.cin,
+  li:curIndices.li,srh:curIndices.srh,wbSfc:curIndices.wbSfc,
+  // All 7 days with proper upper-air data
+  days7:days7,
+  // Daily CAPE array (peak values) for day selector colouring
+  dailyCape:days7.map(function(d){return d.peakCape;}),
+});
 setLoading(false);
-}).catch(function(e){setErr("Could not load upper-air data.");setLoading(false);});
+}).catch(function(e){setErr("Could not load upper-air data: "+e.message);setLoading(false);});
 },[lat,lon]);
 var tabs=[{id:"indices",label:"Indices"},{id:"skewtable",label:"Skew-T / Sounding"},{id:"radar",label:"Live Radar"}];
 var sectionSty={background:"rgba(255,255,255,0.02)",border:"1px solid rgba(74,159,212,0.25)",borderRadius:16,padding:"18px 16px",marginBottom:16};
@@ -2628,32 +2664,32 @@ React.createElement('div', {}
 , (function(){
 var isToday=iMetDayIdx===0;
 var fday=(forecastData||[])[iMetDayIdx]||{};
-var cape=isToday?iData.cape:(iData.dailyCape?iData.dailyCape[iMetDayIdx]:null);
-var cin=isToday?iData.cin:null;
-var li=isToday?iData.li:null;
-var srh=isToday?iData.srh:null;
-var wbSfc=isToday?iData.wbSfc:null;
-var l850=isToday?iData.levels.find(function(x){return x.p===850;}):null;
-if(!isToday&&fday.temp!=null){
-if(cape==null)cape=fday.condition.includes("⛈")?1500:fday.condition.includes("🌧")?200:fday.temp>28&&fday.humidity>65?800:fday.temp>24&&fday.humidity>55?300:50;
-cin=fday.rain>60?-50:-150;li=fday.temp>28&&fday.humidity>65?-3:fday.temp>22?0:2;srh=fday.windMph>25?200:fday.windMph>15?80:20;
-wbSfc=fday.temp!=null&&fday.humidity!=null?(fday.temp*(Math.atan(0.151977*Math.pow(fday.humidity+8.313659,0.5))+Math.atan(fday.temp+fday.humidity)-Math.atan(fday.humidity-1.676331))-4.686035).toFixed(1):null;
-}
+// Use real upper-air data from days7 for every day, not estimates
+var dayData=iData.days7?iData.days7[iMetDayIdx]:null;
+var cape=isToday?iData.cape:(dayData?dayData.peakCape:null);
+var cin=isToday?iData.cin:(dayData?dayData.cin:null);
+var li=isToday?iData.li:(dayData?dayData.li:null);
+var srh=isToday?iData.srh:(dayData?dayData.srh:null);
+var wbSfc=isToday?iData.wbSfc:(dayData?dayData.wbSfc:null);
+var l850=isToday
+  ?(iData.levels?iData.levels.find(function(x){return x.p===850;}):null)
+  :(dayData&&dayData.levels?dayData.levels.find(function(x){return x.p===850;}):null);
+var displayLevels=isToday?iData.levels:(dayData?dayData.levels:null);
 return (React.createElement('div', {}
-, !isToday&&React.createElement('div', { style: {fontSize:10,color:"#ff9944",marginBottom:10,padding:"6px 10px",background:"rgba(255,119,0,0.07)",borderRadius:8}}, "⚠️ Future day values are estimated from surface forecast — live upper-air data only available for today.")
-, isToday&&React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Live upper-air indices — ", fday.date||"Today")
+, isToday&&React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:12}}, "Live upper-air indices — ", fday.date||"Today", " (current hour)")
+, !isToday&&React.createElement('div', { style: {fontSize:11,color:"#4adf88",marginBottom:12,padding:"6px 10px",background:"rgba(74,223,136,0.06)",borderRadius:8}}, "✓ Real upper-air forecast data — 12Z sounding profile for ", fday.date||"this day")
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}
-, React.createElement(MeteoGauge, { label:"CAPE", value:cape!=null?Math.round(cape):"—", unit:"J/kg", color:cape!=null?capeColour(cape):"#555", sub:cape!=null?(cape>=2500?"Extreme":cape>=1000?"High":cape>=500?"Moderate":cape>=250?"Low":"Weak"):"No data", desc:"Convective Available Potential Energy. ≥1000 = severe storms possible."})
-, React.createElement(MeteoGauge, { label:"CIN", value:cin!=null?Math.round(cin):"—", unit:"J/kg", color:cin!=null?cinColour(cin):"#555", sub:cin!=null?(Math.abs(cin)>=200?"Strong cap":Math.abs(cin)>=50?"Moderate cap":"Weak cap"):"No data", desc:"Convective Inhibition. Strong negative values suppress storms."})
+, React.createElement(MeteoGauge, { label:"CAPE (Peak Day)", value:cape!=null?Math.round(cape):"—", unit:"J/kg", color:cape!=null?capeColour(cape):"#555", sub:cape!=null?(cape>=2500?"Extreme":cape>=1000?"High":cape>=500?"Moderate":cape>=250?"Low":"Weak"):"No data", desc:"Peak Convective Available Potential Energy for the day. ≥1000 = severe storms possible."})
+, React.createElement(MeteoGauge, { label:"CIN", value:cin!=null?Math.round(cin):"—", unit:"J/kg", color:cin!=null?cinColour(cin):"#555", sub:cin!=null?(Math.abs(cin)>=200?"Strong cap":Math.abs(cin)>=50?"Moderate cap":"Weak cap"):"No data", desc:"Convective Inhibition at 12Z. Strong negative values suppress storms."})
 , React.createElement(MeteoGauge, { label:"Lifted Index", value:li!=null?parseFloat(li).toFixed(1):"—", unit:"", color:li!=null?liColour(parseFloat(li)):"#555", sub:li!=null?(parseFloat(li)<=-6?"Extremely unstable":parseFloat(li)<=-4?"Very unstable":parseFloat(li)<=-2?"Unstable":parseFloat(li)<=0?"Slightly unstable":"Stable"):"No data", desc:"Parcel temp minus env temp at 500hPa. Negative = unstable."})
 , React.createElement(MeteoGauge, { label:"Storm-Rel Helicity", value:srh!=null?Math.round(srh):"—", unit:"m²/s²", color:srh!=null?hColour(srh):"#555", sub:srh!=null?(srh>=450?"Extreme tornado risk":srh>=300?"High tornado risk":srh>=150?"Moderate risk":"Low risk"):"No data", desc:"0-1km SRH. ≥150 = supercells possible, ≥300 = tornado risk."})
-, React.createElement(MeteoGauge, { label:"Wet Bulb (Sfc)", value:wbSfc!=null?cvtT(parseFloat(wbSfc)):"—", unit:tUnit(), color:wbSfc!=null?(parseFloat(wbSfc)>=28?"#ff4400":parseFloat(wbSfc)>=24?"#ff8800":parseFloat(wbSfc)<0?"#88ccff":"#4adf88"):"#555", sub:wbSfc!=null?(parseFloat(wbSfc)>=28?"Dangerous heat stress":parseFloat(wbSfc)<0?"Below freezing":"Normal range"):"No data", desc:"Wet-bulb temperature at surface."})
-, React.createElement(MeteoGauge, { label:"850hPa Temp", value:l850&&l850.T!=null?cvtT(l850.T):(fday.temp!=null?cvtT(fday.temp-9):"—"), unit:tUnit(), color:(function(){var t=l850&&l850.T!=null?l850.T:fday.temp!=null?fday.temp-9:null;if(t==null)return"#555";return t>10?"#ff8844":t>0?"#ffcc44":t>-10?"#88bbff":"#cc88ff";})(), sub:isToday?"~1500m altitude (live)":"~1500m altitude (estimated)", desc:"850hPa temperature. Key level for thunderstorm forecasting."})
+, React.createElement(MeteoGauge, { label:"Wet Bulb (Sfc)", value:wbSfc!=null?cvtT(parseFloat(wbSfc)):"—", unit:tUnit(), color:wbSfc!=null?(parseFloat(wbSfc)>=28?"#ff4400":parseFloat(wbSfc)>=24?"#ff8800":parseFloat(wbSfc)<0?"#88ccff":"#4adf88"):"#555", sub:wbSfc!=null?(parseFloat(wbSfc)>=28?"Dangerous heat stress":parseFloat(wbSfc)<0?"Below freezing":"Normal range"):"No data", desc:"Wet-bulb temperature at surface (12Z)."})
+, React.createElement(MeteoGauge, { label:"850hPa Temp", value:l850&&l850.T!=null?cvtT(l850.T):"—", unit:tUnit(), color:(function(){var t=l850&&l850.T!=null?l850.T:null;if(t==null)return"#555";return t>10?"#ff8844":t>0?"#ffcc44":t>-10?"#88bbff":"#cc88ff";})(), sub:l850&&l850.T!=null?"~1500m altitude":"No data", desc:"850hPa temperature. Key level for thunderstorm forecasting."})
 )
-, isToday&&React.createElement('div', {}
-, React.createElement('div', { style: {fontSize:10,color:"#555",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}, "Pressure Level Quick Read")
+, displayLevels&&React.createElement('div', {}
+, React.createElement('div', { style: {fontSize:10,color:"#555",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}, isToday?"Pressure Level Quick Read (current)":"Pressure Level Quick Read (12Z forecast)")
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}
-, [850,700,500,400,300].map(function(p){var l=iData.levels.find(function(x){return x.p===p;});if(!l)return null;var dirs=["N","NE","NE","E","SE","SE","S","SW","SW","W","NW","NW"];var wdir=l.windDir!=null?dirs[Math.floor(l.windDir/30)%12]:"";return React.createElement('div', { key: p, style: {background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"8px 10px",border:"1px solid rgba(255,255,255,0.06)"}}, React.createElement('div', { style: {fontSize:10,color:"#555",marginBottom:3}}, p, "hPa"), React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, l.T!=null?cvtT(l.T)+tUnit():"—"), React.createElement('div', { style: {fontSize:10,color:"#88aaff",marginTop:2}}, l.windSpd!=null?wdir+" "+l.windSpd+"kt":"—"), React.createElement('div', { style: {fontSize:10,color:"#44aaff",marginTop:1}}, "RH: ", l.rh!=null?Math.round(l.rh)+"%":"—"));})
+, [850,700,500,400,300].map(function(p){var l=displayLevels.find(function(x){return x.p===p;});if(!l)return null;var dirs=["N","NE","NE","E","SE","SE","S","SW","SW","W","NW","NW"];var wdir=l.windDir!=null?dirs[Math.floor(l.windDir/30)%12]:"";return React.createElement('div', { key: p, style: {background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"8px 10px",border:"1px solid rgba(255,255,255,0.06)"}}, React.createElement('div', { style: {fontSize:10,color:"#555",marginBottom:3}}, p, "hPa"), React.createElement('div', { style: {fontSize:13,color:"#e8dcc8"}}, l.T!=null?cvtT(l.T)+tUnit():"—"), React.createElement('div', { style: {fontSize:10,color:"#88aaff",marginTop:2}}, l.windSpd!=null?wdir+" "+l.windSpd+"kt":"—"), React.createElement('div', { style: {fontSize:10,color:"#44aaff",marginTop:1}}, "RH: ", l.rh!=null?Math.round(l.rh)+"%":"—"));})
 )
 )
 ));
@@ -2663,10 +2699,17 @@ return (React.createElement('div', {}
 , !iLoading&&!iErr&&iData&&iTab==="skewtable"&&(
 React.createElement('div', {}
 , React.createElement('div', { style: {display:"flex",gap:6,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}, React.createElement('span', { style: {fontSize:10,color:"#555",letterSpacing:1,textTransform:"uppercase"}}, "Show:"), ["max","min"].map(function(m){var on=iMinMax===m;return React.createElement('button', { key: m, onClick: function(){setMinMax(m);}, style: {padding:"4px 14px",borderRadius:8,border:"1px solid",borderColor:on?"#4a9fd4":"rgba(255,255,255,0.1)",background:on?"rgba(74,159,212,0.15)":"transparent",color:on?"#88ccff":"#666",fontSize:11,cursor:"pointer"}}, m==="max"?"Maximum conditions":"Minimum conditions");}), React.createElement('span', { style: {fontSize:10,color:"#555",marginLeft:4}}, iMinMax==="max"?"Warmest / strongest winds of the day":"Coolest / weakest winds of the day"))
-, React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:10}}, "Skew-T Log-P · Red=Temp · Blue dashed=Dewpoint · Wind barbs right · Showing ", iMinMax==="max"?"daytime maximum":"overnight minimum", " profile")
-, React.createElement('div', { style: {overflowX:"auto",marginBottom:16}}, React.createElement(SkewTChart, { levels: iData.levels.map(function(l){if(iMinMax==="min")return Object.assign({},l,{T:l.T!=null?l.T-3:null,Td:l.Td!=null?l.Td-2:null,windSpd:l.windSpd!=null?Math.round(l.windSpd*0.8):null});return l;})}))
-, React.createElement('div', { style: {fontSize:11,color:"#666",marginBottom:8,letterSpacing:1,textTransform:"uppercase"}}, "Vertical Sounding Table — ", iMinMax==="max"?"Maximum (daytime)":"Minimum (overnight)")
-, React.createElement(VerticalTable, { levels: iData.levels.map(function(l){if(iMinMax==="min")return Object.assign({},l,{T:l.T!=null?l.T-3:null,Td:l.Td!=null?l.Td-2:null,windSpd:l.windSpd!=null?Math.round(l.windSpd*0.8):null});return l;}), u: u})
+, (function(){
+var fday=(forecastData||[])[iMetDayIdx]||{};
+var dayData=iData.days7?iData.days7[iMetDayIdx]:null;
+var soundingLevels=iMetDayIdx===0?iData.levels:(dayData?dayData.levels:iData.levels);
+return React.createElement('div', {}
+, React.createElement('div', { style: {fontSize:11,color:"#555",marginBottom:10}}, "Skew-T Log-P · Red=Temp · Blue dashed=Dewpoint · Wind barbs right · ", fday.date||"Today", " · ", iMinMax==="max"?"Daytime max profile":"Overnight min profile", " · 12Z sounding")
+, React.createElement('div', { style: {overflowX:"auto",marginBottom:16}}, React.createElement(SkewTChart, { levels: soundingLevels.map(function(l){if(iMinMax==="min")return Object.assign({},l,{T:l.T!=null?l.T-3:null,Td:l.Td!=null?l.Td-2:null,windSpd:l.windSpd!=null?Math.round(l.windSpd*0.8):null});return l;})}))
+, React.createElement('div', { style: {fontSize:11,color:"#666",marginBottom:8,letterSpacing:1,textTransform:"uppercase"}}, "Vertical Sounding Table — ", fday.date||"Today", " — ", iMinMax==="max"?"Maximum (daytime)":"Minimum (overnight)")
+, React.createElement(VerticalTable, { levels: soundingLevels.map(function(l){if(iMinMax==="min")return Object.assign({},l,{T:l.T!=null?l.T-3:null,Td:l.Td!=null?l.Td-2:null,windSpd:l.windSpd!=null?Math.round(l.windSpd*0.8):null});return l;}), u: u})
+);
+})()
 )
 )
 , iTab==="radar"&&(
