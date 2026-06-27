@@ -5049,7 +5049,8 @@ function AdminAnnotationsPanel(props){
       setMsg("✓ Saved.");
       resetForm();
     }catch(e){
-      setMsg("Error saving: "+(e.message||e.code||JSON.stringify(e)));
+      var detail=[e.code,e.message,JSON.stringify(e)].filter(Boolean).join(" | ");
+      setMsg("Error: "+detail);
       console.error("saveAnnotation error:",e);
     }finally{
       setSaving(false);
@@ -5166,7 +5167,7 @@ function AdminAnnotationsPanel(props){
         , React.createElement('button', {onClick:saveAnnotation,disabled:iSaving,style:{padding:"9px 20px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#ff7700,#ff4400)",color:"#fff",fontSize:13,fontWeight:"bold",cursor:iSaving?"wait":"pointer"}}, iSaving?"Saving…":(iEditIdx!=null?"Update annotation":"Add annotation"))
         , iEditIdx!=null&&React.createElement('button', {onClick:resetForm,style:{padding:"9px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#888",fontSize:12,cursor:"pointer"}}, "Cancel edit")
       )
-      , iMsg&&React.createElement('div', {style:{marginTop:8,fontSize:11,color:iMsg.startsWith("✓")?"#44cc66":"#ff7744"}}, iMsg)
+      , iMsg&&React.createElement('div', {style:{marginTop:8,fontSize:11,color:iMsg.startsWith("✓")?"#44cc66":"#ff7744",wordBreak:"break-all",whiteSpace:"pre-wrap",background:"rgba(0,0,0,0.3)",padding:"8px 10px",borderRadius:8,fontFamily:"monospace"}}, iMsg)
     )
     )
   );
