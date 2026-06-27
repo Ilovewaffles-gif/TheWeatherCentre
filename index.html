@@ -4977,6 +4977,69 @@ function isAdmin(user){ return user && user.email && user.email.toLowerCase() ==
 // Normalise a lat/lon pair to a Firestore document key
 function locKey(lat,lon){ return Math.round(lat*10)/10+"_"+Math.round(lon*10)/10; }
 
+// ── Region system ────────────────────────────────────────────────────────────
+// Annotations can be scoped to a named region so one annotation covers
+// everyone in e.g. "South-East England" rather than a single lat/lon point.
+var REGIONS = [
+  // UK & Ireland
+  {key:"region_se-england",   label:"South-East England",    latMin:50.7,latMax:51.9,lonMin:-1.0,lonMax:1.8},
+  {key:"region_london",       label:"London",                latMin:51.3,latMax:51.7,lonMin:-0.6,lonMax:0.3},
+  {key:"region_sw-england",   label:"South-West England",    latMin:49.9,latMax:51.5,lonMin:-5.8,lonMax:-1.0},
+  {key:"region_e-england",    label:"East of England",       latMin:51.5,latMax:53.0,lonMin:-0.5,lonMax:2.0},
+  {key:"region_midlands",     label:"Midlands",              latMin:51.8,latMax:53.2,lonMin:-3.0,lonMax:-0.5},
+  {key:"region_n-england",    label:"Northern England",      latMin:53.2,latMax:55.8,lonMin:-3.5,lonMax:0.1},
+  {key:"region_wales",        label:"Wales",                 latMin:51.3,latMax:53.5,lonMin:-5.4,lonMax:-2.6},
+  {key:"region_scotland",     label:"Scotland",              latMin:54.6,latMax:60.9,lonMin:-7.6,lonMax:-0.7},
+  {key:"region_n-ireland",    label:"Northern Ireland",      latMin:53.9,latMax:55.4,lonMin:-8.2,lonMax:-5.4},
+  {key:"region_ireland",      label:"Ireland",               latMin:51.4,latMax:55.4,lonMin:-10.5,lonMax:-5.9},
+  // Europe
+  {key:"region_w-europe",     label:"Western Europe",        latMin:43.0,latMax:55.0,lonMin:-5.0,lonMax:8.0},
+  {key:"region_c-europe",     label:"Central Europe",        latMin:46.0,latMax:55.0,lonMin:8.0,lonMax:20.0},
+  {key:"region_s-europe",     label:"Southern Europe",       latMin:35.0,latMax:46.0,lonMin:-10.0,lonMax:28.0},
+  {key:"region_n-europe",     label:"Northern Europe",       latMin:55.0,latMax:71.0,lonMin:4.0,lonMax:32.0},
+  {key:"region_e-europe",     label:"Eastern Europe",        latMin:44.0,latMax:57.0,lonMin:20.0,lonMax:40.0},
+  // North America
+  {key:"region_us-ne",        label:"US Northeast",          latMin:37.0,latMax:47.5,lonMin:-80.0,lonMax:-66.0},
+  {key:"region_us-se",        label:"US Southeast",          latMin:24.0,latMax:37.0,lonMin:-92.0,lonMax:-75.0},
+  {key:"region_us-mw",        label:"US Midwest",            latMin:36.0,latMax:49.0,lonMin:-104.0,lonMax:-80.0},
+  {key:"region_us-sw",        label:"US Southwest",          latMin:25.0,latMax:42.0,lonMin:-125.0,lonMax:-104.0},
+  {key:"region_us-nw",        label:"US Northwest",          latMin:42.0,latMax:49.0,lonMin:-125.0,lonMax:-110.0},
+  {key:"region_canada",       label:"Canada",                latMin:42.0,latMax:83.0,lonMin:-141.0,lonMax:-52.0},
+  // Rest of world
+  {key:"region_middle-east",  label:"Middle East",           latMin:12.0,latMax:42.0,lonMin:25.0,lonMax:63.0},
+  {key:"region_s-asia",       label:"South Asia",            latMin:5.0, latMax:37.0,lonMin:60.0,lonMax:97.0},
+  {key:"region_e-asia",       label:"East Asia",             latMin:18.0,latMax:53.0,lonMin:97.0,lonMax:145.0},
+  {key:"region_se-asia",      label:"South-East Asia",       latMin:-10.0,latMax:28.0,lonMin:92.0,lonMax:141.0},
+  {key:"region_oceania",      label:"Oceania",               latMin:-47.0,latMax:-10.0,lonMin:112.0,lonMax:179.0},
+  {key:"region_africa-n",     label:"North Africa",          latMin:15.0,latMax:38.0,lonMin:-17.0,lonMax:37.0},
+  {key:"region_africa-s",     label:"Sub-Saharan Africa",    latMin:-35.0,latMax:15.0,lonMin:-18.0,lonMax:52.0},
+  {key:"region_s-america",    label:"South America",         latMin:-56.0,latMax:13.0,lonMin:-82.0,lonMax:-34.0},
+  {key:"region_c-america",    label:"Central America & Caribbean", latMin:7.0,latMax:33.0,lonMin:-92.0,lonMax:-59.0},
+];
+
+function getRegion(lat,lon){
+  // Use the smallest matching region (most specific first by area)
+  var best=null,bestArea=Infinity;
+  for(var i=0;i<REGIONS.length;i++){
+    var r=REGIONS[i];
+    if(lat>=r.latMin&&lat<=r.latMax&&lon>=r.lonMin&&lon<=r.lonMax){
+      var area=(r.latMax-r.latMin)*(r.lonMax-r.lonMin);
+      if(area<bestArea){bestArea=area;best=r;}
+    }
+  }
+  return best||null;
+}
+
+function getRegionKey(lat,lon){
+  var r=getRegion(lat,lon);
+  return r?r.key:locKey(lat,lon);
+}
+
+function getRegionLabel(lat,lon){
+  var r=getRegion(lat,lon);
+  return r?r.label:null;
+}
+
 // Severity colours
 var ANN_LEVELS = {
   info:    {col:"#4a9fd4", bg:"rgba(74,159,212,0.10)", border:"rgba(74,159,212,0.30)", icon:"ℹ️"},
@@ -5024,10 +5087,10 @@ function AdminAnnotationsPanel(props){
     if(!iFMsg.trim()){setMsg("Message is required.");return;}
     if(lat==null||lon==null){setMsg("Error: lat="+lat+" lon="+lon);return;}
     setSaving(true);setMsg("");
-    var key=locKey(lat,lon);
+    var key=getRegionKey(lat,lon);
     var annId=(iEditIdx!=null&&annotations[iEditIdx])?annotations[iEditIdx].id:Date.now().toString(36);
     var authorEmail=(user&&user.email)||"unknown";
-    var newAnn={id:annId,severity:iFSev,dayIndex:iFDay,message:iFMsg.trim(),adjustField:iFAdjF,adjustValue:parseFloat(iFAdjV)||0,internalNote:iFNote.trim(),locationName:locationName,createdAt:new Date().toISOString(),authorEmail:authorEmail};
+    var newAnn={id:annId,severity:iFSev,dayIndex:iFDay,message:iFMsg.trim(),adjustField:iFAdjF,adjustValue:parseFloat(iFAdjV)||0,internalNote:iFNote.trim(),locationName:locationName,regionLabel:getRegionLabel(lat,lon)||null,createdAt:new Date().toISOString(),authorEmail:authorEmail};
     var updated;
     if(iEditIdx!=null){
       updated=annotations.map(function(a,i){return i===iEditIdx?newAnn:a;});
@@ -5053,7 +5116,7 @@ function AdminAnnotationsPanel(props){
   async function deleteAnnotation(idx){
     if(!window.confirm("Delete this annotation?"))return;
     var updated=annotations.filter(function(_,i){return i!==idx;});
-    var key=locKey(lat,lon);
+    var key=getRegionKey(lat,lon);
     try{
       await fbDb.collection("adminAnnotations").doc(key).set({annotations:updated,updatedAt:new Date().toISOString(),locationName:locationName});
       setAnnotations(updated);
@@ -5070,7 +5133,7 @@ function AdminAnnotationsPanel(props){
       , React.createElement('span', {style:{fontSize:18}}, "🔧")
       , React.createElement('div', {}
         , React.createElement('div', {style:{fontSize:11,color:"#ff7700",letterSpacing:2,textTransform:"uppercase"}}, "Admin — Editorial Annotations")
-        , React.createElement('div', {style:{fontSize:11,color:"#555",marginTop:1}}, locationName)
+        , React.createElement('div', {style:{fontSize:11,color:"#555",marginTop:1}}, (getRegionLabel(lat,lon)||"Custom location")+" · "+locationName)
       )
       , React.createElement('button', {onClick:onClose,style:{marginLeft:"auto",background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"#666",fontSize:12,cursor:"pointer",padding:"4px 10px"}}, "✕ Close")
     )
@@ -5122,7 +5185,7 @@ function AdminAnnotationsPanel(props){
         , React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4}}, "APPLIES TO")
         , React.createElement('div', {style:{display:"flex",gap:4,flexWrap:"wrap"}},
           [React.createElement('button', {key:"all",onClick:function(){setFDay(-1);},style:{padding:"4px 10px",borderRadius:8,border:"1px solid "+(iFDay===-1?"#ff7700":"rgba(255,255,255,0.08)"),background:iFDay===-1?"rgba(255,119,0,0.12)":"transparent",color:iFDay===-1?"#ff9944":"#666",fontSize:11,cursor:"pointer"}}, "All days")]
-          .concat((forecastData||[]).slice(0,7).map(function(d,i){
+          .concat((forecastData||[]).slice(0,14).map(function(d,i){
             var on=iFDay===i;
             return React.createElement('button', {key:i,onClick:function(){setFDay(i);},style:{padding:"4px 10px",borderRadius:8,border:"1px solid "+(on?"#ff7700":"rgba(255,255,255,0.08)"),background:on?"rgba(255,119,0,0.12)":"transparent",color:on?"#ff9944":"#666",fontSize:11,cursor:"pointer"}}, d.date.split(" ").slice(0,2).join(" "));
           }))
@@ -5189,7 +5252,7 @@ function AdminAnnotationsBanner(props){
               , React.createElement('span', {style:{fontSize:10,fontWeight:"bold",color:s.col,textTransform:"uppercase",letterSpacing:1}}, ann.severity)
               , dayLabel&&React.createElement('span', {style:{fontSize:10,color:"#555"}}, "·  "+dayLabel)
               , ann.adjustField&&ann.adjustField!=="general"&&ann.adjustValue!==0&&React.createElement('span', {style:{fontSize:10,color:"#888"}}, "· "+ann.adjustField.charAt(0).toUpperCase()+ann.adjustField.slice(1)+" "+(ann.adjustValue>0?"+":"")+ann.adjustValue)
-              , React.createElement('span', {style:{fontSize:9,color:"#444",marginLeft:"auto"}}, "Editorial")
+              , React.createElement('span', {style:{fontSize:9,color:"#444",marginLeft:"auto"}}, ann.regionLabel?"📍 "+ann.regionLabel+" · Editorial":"Editorial")
             )
             , React.createElement('div', {style:{fontSize:dayIndex!=null?11:12,color:"#c0b090",lineHeight:1.55}}, ann.message)
           )
@@ -5250,7 +5313,7 @@ return unsub;
 // Fetch admin annotations whenever location changes
 useEffect(function(){
   if(!iLat||!iLon)return;
-  var key=locKey(iLat,iLon);
+  var key=getRegionKey(iLat,iLon);
   fbDb.collection("adminAnnotations").doc(key).get().then(function(doc){
     if(doc.exists&&doc.data().annotations){setAnnotations(doc.data().annotations);}
     else{setAnnotations([]);}
