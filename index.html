@@ -2263,7 +2263,7 @@ prom.then(function(uc){onLogin(uc.user);onClose();}).catch(function(e){setErr(e.
 }
 function handleGoogle(){
 setBusy(true);setErr("");
-fbAuth.signInWithPopup(googleProvider).then(function(uc){onLogin(uc.user);onClose();}).catch(function(e){setErr(e.message);setBusy(false);});
+fbAuth.signInWithPopup(googleProvider).then(function(uc){onLogin(uc.user);onClose();}).catch(function(e){if(e.code==="auth/popup-closed-by-user"||e.code==="auth/cancelled-popup-request"){setBusy(false);return;}setErr(e.message);setBusy(false);});
 }
 var inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"#fff",fontSize:13,outline:"none",marginBottom:10,fontFamily:"Georgia,serif"};
 var btn={width:"100%",padding:"11px",borderRadius:10,border:"none",fontSize:13,cursor:iBusy?"wait":"pointer",fontFamily:"Georgia,serif",marginBottom:8};
@@ -5469,3 +5469,4 @@ try {
 </script>
 </body>
 </html>
+
