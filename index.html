@@ -919,7 +919,7 @@ React.createElement('button', { key: item.id, onClick: function(){setActivePage(
 );
 }
 function DayCard(props){
-var d=props.d,i=props.i,prevDay=props.prevDay,sel=props.sel,setSel=props.setSel,u=props.u,detailView=props.detailView,setDetailView=props.setDetailView,climAvg=props.climAvg;
+var d=props.d,i=props.i,prevDay=props.prevDay,sel=props.sel,setSel=props.setSel,u=props.u,detailView=props.detailView,setDetailView=props.setDetailView,climAvg=props.climAvg,annotations=props.annotations||[],forecastData=props.forecastData;
 var color=tc(d.temp),isC=d.type==="confirmed",isN=d.type==="near",isSel=sel===i;
 var shade=shadeFeel(d.temp,d.windMph,d.humidity,d.condition);
 var sun=sunFeel(d.temp,d.windMph,d.humidity,d.condition);
@@ -951,6 +951,15 @@ React.createElement('div', { id:"daycard-"+i, onClick: function(){setSel(sel===i
 , React.createElement('span', { style: {fontSize:10,color:hwCol,fontWeight:"bold"}}, "🔥 ", hw.level==="severe"?"Severe":hw.level==="high"?"High":"Moderate", " underestimate risk")
 , React.createElement('span', { style: {fontSize:11,color:hwCol,fontWeight:"bold"}}, "up to ", fmtTemp(hw.trueFeelHigh,u.temp))
 )
+, (function(){
+  var dayAnns=annotations.filter(function(a){return a.dayIndex<0||a.dayIndex===i;});
+  if(!dayAnns.length)return null;
+  var top=dayAnns[0];
+  var s=ANN_LEVELS[top.severity]||ANN_LEVELS.info;
+  return React.createElement('div', {style:{background:s.bg,border:"1px solid "+s.border,borderRadius:8,padding:"5px 8px",marginBottom:8,fontSize:10,color:s.col,lineHeight:1.4}},
+    s.icon+" ", React.createElement('b', {}, top.severity.toUpperCase()), " — ", top.message.length>80?top.message.slice(0,80)+"…":top.message
+  )
+})()
 , React.createElement('div', { style: {background:"rgba(0,0,0,0.28)",borderRadius:8,padding:"7px 9px",marginBottom:8,display:"flex",flexDirection:"column",gap:4}}
 , sunny&&React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center"}}, React.createElement('span', { style: {fontSize:11,color:"#ffd060"}}, "In sun" ), React.createElement('span', { style: {fontSize:14,fontWeight:"bold",color:tc(sun)}}, fmtTemp(sun,u.temp)))
 , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center"}}, React.createElement('span', { style: {fontSize:11,color:"#a0b4c8"}}, "In shade" ), React.createElement('span', { style: {fontSize:14,fontWeight:"bold",color:tc(shade)}}, fmtTemp(shade,u.temp)))
@@ -974,6 +983,7 @@ React.createElement('div', { style: {fontSize:11,color:"#9a8c7a",marginTop:6,bor
 , React.createElement('button', { onClick: function(e){e.stopPropagation();setDetailView("daily");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:detailView==="daily"?"#ff7700":"rgba(255,255,255,0.07)",color:detailView==="daily"?"#fff":"#aaa",border:"none",cursor:"pointer"}}, "Daily Summary" )
 , React.createElement('button', { onClick: function(e){e.stopPropagation();setDetailView("periods");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:detailView==="periods"?"#ff7700":"rgba(255,255,255,0.07)",color:detailView==="periods"?"#fff":"#aaa",border:"none",cursor:"pointer"}}, "Morning / Afternoon / Evening" )
 , hw.level!=="none"&&React.createElement('button', { onClick: function(e){e.stopPropagation();setDetailView("heatwave");}, style: {padding:"3px 10px",fontSize:11,borderRadius:10,background:detailView==="heatwave"?hwCol:"rgba(255,255,255,0.07)",color:detailView==="heatwave"?"#1a0a00":"#aaa",border:"none",cursor:"pointer"}}, "🔥 Heat Risk" )
+, (function(){var dayAnns=annotations.filter(function(a){return a.dayIndex<0||a.dayIndex===i;});return dayAnns.length>0&&React.createElement('button', {onClick:function(e){e.stopPropagation();setDetailView("editorial");},style:{padding:"3px 10px",fontSize:11,borderRadius:10,background:detailView==="editorial"?"#4a9fd4":"rgba(255,255,255,0.07)",color:detailView==="editorial"?"#fff":"#aaa",border:"none",cursor:"pointer"}}, "📋 Editorial ("+dayAnns.length+")");})()
 )
 , detailView==="daily"&&(
 React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:3}}
@@ -1008,6 +1018,13 @@ React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:8
 , hw.factors.length>0&&React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:5}}, hw.factors.map(function(f,fi){return React.createElement('div', { key: fi, style: {display:"flex",gap:7,alignItems:"flex-start"}}, React.createElement('span', { style: {fontSize:13,flexShrink:0}}, f.icon), React.createElement('div', {}, React.createElement('span', { style: {fontSize:10,color:"#ccc",fontWeight:"bold"}}, f.label), React.createElement('div', { style: {fontSize:10,color:"#777",lineHeight:1.5}}, f.detail)));}))
 )
 )
+, detailView==="editorial"&&(function(){
+  var dayAnns=annotations.filter(function(a){return a.dayIndex<0||a.dayIndex===i;});
+  return React.createElement('div', {style:{display:"flex",flexDirection:"column",gap:6}}
+    , React.createElement('div', {style:{fontSize:10,color:"#4a9fd4",letterSpacing:1,textTransform:"uppercase",marginBottom:4}}, "Editorial Annotations")
+    , React.createElement(AdminAnnotationsBanner, {annotations:dayAnns,forecastData:forecastData,dayIndex:i})
+  )
+})()
 , isC&&React.createElement('div', { style: {color:"#ff7700",marginTop:5,fontSize:10}}, "Confirmed forecast" )
 , isN&&React.createElement('div', { style: {color:"#4a9fd4",marginTop:5,fontSize:10}}, "Near-term forecast" )
 )
@@ -1396,7 +1413,7 @@ React.createElement('div', {style:{marginBottom:20}}
 );
 }
 function WeatherOverview(props){
-var forecastData=props.forecastData,locationName=props.locationName,units=props.u,hourlyRaw=props.hourlyRaw,lat=props.lat,lon=props.lon,climAvg=props.climAvg,onShare=props.onShare;
+var forecastData=props.forecastData,locationName=props.locationName,units=props.u,hourlyRaw=props.hourlyRaw,lat=props.lat,lon=props.lon,climAvg=props.climAvg,onShare=props.onShare,annotations=props.annotations||[];
 var u=units;
 var sel=useState(null);var iSel=sel[0];var setSel=sel[1];
 var graph=useState("temp");var iGraph=graph[0];var setGraph=graph[1];
@@ -1433,6 +1450,7 @@ React.createElement('div', {}
   );
 })()
 , React.createElement('div', {id:"banners-zone"}
+, annotations.length>0&&React.createElement(AdminAnnotationsBanner, {annotations:annotations,forecastData:forecastData})
 , React.createElement(WeatherWarningsPanel, { locationName: locationName, forecastData: forecastData, climAvg: climAvg})
 , React.createElement(BestDayBanner, { forecastData: forecastData, u: u, onJump: function(idx){setSel(idx);setDetailV("daily");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}})
 , React.createElement(HeatwaveSummaryBanner, { forecastData: forecastData, u: u, climAvg: climAvg, onJump: function(idx){setSel(idx);setDetailV("heatwave");var el=document.getElementById("daycard-"+idx);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});}})
@@ -1495,7 +1513,7 @@ React.createElement('div', {}
 , iGraph==="wind"&&React.createElement('div', { style: {display:"flex",gap:8,marginTop:5,fontSize:9,color:"#777",flexWrap:"wrap"}}, [["<5","V.Light"],["5-10","Light"],["10-20","Mod"],["20-30","Strong"],["30+","Gale+"]].map(function(p){return React.createElement('span', { key: p[0]}, React.createElement('span', { style: {color:"#ffcc88"}}, p[0]), " ", p[1]);}))
 )
 , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))",gap:9}}
-, forecastData.map(function(d,i){return React.createElement(DayCard, { key: i, d: d, i: i, prevDay: i>0?forecastData[i-1]:null, sel: iSel, setSel: setSel, u: u, detailView: iDetailV, setDetailView: setDetailV, climAvg: climAvg});})
+, forecastData.map(function(d,i){return React.createElement(DayCard, { key: i, d: d, i: i, prevDay: i>0?forecastData[i-1]:null, sel: iSel, setSel: setSel, u: u, detailView: iDetailV, setDetailView: setDetailV, climAvg: climAvg, annotations: annotations, forecastData: forecastData});})
 )
 , React.createElement('div', { style: {marginTop:28,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"18px"}}
 , React.createElement('div', {style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:14}}
@@ -4948,6 +4966,241 @@ function AviationDashboard(props) {
   );
 }
 
+
+// ─── ADMIN ANNOTATION SYSTEM ──────────────────────────────────────────────────
+// Only the account with this email can create/edit/delete annotations.
+// Change this to your own email address.
+var ADMIN_EMAIL = "harleysmeadowfield@gmail.com";
+
+function isAdmin(user){ return user && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase(); }
+
+// Normalise a lat/lon pair to a Firestore document key
+function locKey(lat,lon){ return Math.round(lat*10)/10+"_"+Math.round(lon*10)/10; }
+
+// Severity colours
+var ANN_LEVELS = {
+  info:    {col:"#4a9fd4", bg:"rgba(74,159,212,0.10)", border:"rgba(74,159,212,0.30)", icon:"ℹ️"},
+  caution: {col:"#ffcc00", bg:"rgba(255,204,0,0.08)",  border:"rgba(255,204,0,0.30)",  icon:"⚠️"},
+  warning: {col:"#ff8800", bg:"rgba(255,136,0,0.10)",  border:"rgba(255,136,0,0.35)",  icon:"🔶"},
+  severe:  {col:"#ff2200", bg:"rgba(255,34,0,0.10)",   border:"rgba(255,34,0,0.40)",   icon:"🚨"},
+};
+
+// ── AdminAnnotationsPanel ───────────────────────────────────────────────────
+// Full CRUD panel — only shown to admin user
+function AdminAnnotationsPanel(props){
+  var lat=props.lat,lon=props.lon,locationName=props.locationName;
+  var forecastData=props.forecastData,user=props.user,onClose=props.onClose;
+  var annotations=props.annotations,setAnnotations=props.setAnnotations;
+
+  var saving=useState(false);var iSaving=saving[0];var setSaving=saving[1];
+  var msg=useState("");var iMsg=msg[0];var setMsg=msg[1];
+  var editIdx=useState(null);var iEditIdx=editIdx[0];var setEditIdx=editIdx[1];
+
+  // Form state
+  var fSeverity=useState("warning");var iFSev=fSeverity[0];var setFSev=fSeverity[1];
+  var fDayIdx=useState(-1);var iFDay=fDayIdx[0];var setFDay=fDayIdx[1]; // -1 = all days
+  var fMessage=useState("");var iFMsg=fMessage[0];var setFMsg=fMessage[1];
+  var fAdjField=useState("general");var iFAdjF=fAdjField[0];var setFAdjF=fAdjField[1];
+  var fAdjVal=useState(0);var iFAdjV=fAdjField[0];var setFAdjV=fAdjVal[1];
+  var fShowNote=useState(false);var iFShowNote=fShowNote[0];var setFShowNote=fShowNote[1];
+  var fNote=useState("");var iFNote=fNote[0];var setFNote=fNote[1];
+
+  function resetForm(){
+    setFSev("warning");setFDay(-1);setFMsg("");setFAdjF("general");setFAdjV(0);setFShowNote(false);setFNote("");setEditIdx(null);
+  }
+
+  function loadEdit(ann,idx){
+    setFSev(ann.severity||"warning");
+    setFDay(ann.dayIndex!=null?ann.dayIndex:-1);
+    setFMsg(ann.message||"");
+    setFAdjF(ann.adjustField||"general");
+    setFAdjV(ann.adjustValue||0);
+    setFShowNote(!!ann.internalNote);
+    setFNote(ann.internalNote||"");
+    setEditIdx(idx);
+  }
+
+  async function saveAnnotation(){
+    if(!iFMsg.trim()){setMsg("Message is required.");return;}
+    setSaving(true);setMsg("");
+    var key=locKey(lat,lon);
+    var newAnn={
+      id:editIdx!=null?annotations[editIdx].id:Date.now().toString(36),
+      severity:iFSev,
+      dayIndex:iFDay,
+      message:iFMsg.trim(),
+      adjustField:iFAdjF,
+      adjustValue:parseFloat(iFAdjV)||0,
+      internalNote:iFNote.trim(),
+      locationName:locationName,
+      createdAt:new Date().toISOString(),
+      authorEmail:user.email,
+    };
+    var updated;
+    if(editIdx!=null){
+      updated=annotations.map(function(a,i){return i===editIdx?newAnn:a;});
+    } else {
+      updated=annotations.concat([newAnn]);
+    }
+    try{
+      await fbDb.collection("adminAnnotations").doc(key).set({annotations:updated,updatedAt:new Date().toISOString(),locationName:locationName});
+      setAnnotations(updated);
+      setMsg("✓ Saved.");
+      resetForm();
+    }catch(e){setMsg("Error saving: "+e.message);}
+    setSaving(false);
+  }
+
+  async function deleteAnnotation(idx){
+    if(!window.confirm("Delete this annotation?"))return;
+    var updated=annotations.filter(function(_,i){return i!==idx;});
+    var key=locKey(lat,lon);
+    try{
+      await fbDb.collection("adminAnnotations").doc(key).set({annotations:updated,updatedAt:new Date().toISOString(),locationName:locationName});
+      setAnnotations(updated);
+      if(iEditIdx===idx)resetForm();
+    }catch(e){setMsg("Error deleting: "+e.message);}
+  }
+
+  var sty={background:"#0a1020",border:"1px solid rgba(255,119,0,0.5)",borderRadius:16,padding:"20px",marginBottom:20,position:"relative"};
+  var inputSty={width:"100%",padding:"8px 10px",borderRadius:9,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.05)",color:"#e8dcc8",fontSize:12,fontFamily:"Georgia,serif"};
+
+  return(
+    React.createElement('div', {style:sty}
+    , React.createElement('div', {style:{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}
+      , React.createElement('span', {style:{fontSize:18}}, "🔧")
+      , React.createElement('div', {}
+        , React.createElement('div', {style:{fontSize:11,color:"#ff7700",letterSpacing:2,textTransform:"uppercase"}}, "Admin — Editorial Annotations")
+        , React.createElement('div', {style:{fontSize:11,color:"#555",marginTop:1}}, locationName)
+      )
+      , React.createElement('button', {onClick:onClose,style:{marginLeft:"auto",background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"#666",fontSize:12,cursor:"pointer",padding:"4px 10px"}}, "✕ Close")
+    )
+
+    // Existing annotations list
+    , annotations.length>0&&React.createElement('div', {style:{marginBottom:16}}
+      , React.createElement('div', {style:{fontSize:10,color:"#555",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}, "Active annotations ("+annotations.length+")")
+      , annotations.map(function(ann,i){
+        var s=ANN_LEVELS[ann.severity]||ANN_LEVELS.info;
+        var dayLabel=ann.dayIndex>=0&&forecastData[ann.dayIndex]?forecastData[ann.dayIndex].date:"All days";
+        return React.createElement('div', {key:ann.id,style:{background:s.bg,border:"1px solid "+s.border,borderRadius:10,padding:"10px 12px",marginBottom:6,display:"flex",gap:8,alignItems:"flex-start"}}
+          , React.createElement('span', {style:{fontSize:14,flexShrink:0}}, s.icon)
+          , React.createElement('div', {style:{flex:1,minWidth:0}}
+            , React.createElement('div', {style:{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:3}}
+              , React.createElement('span', {style:{fontSize:11,color:s.col,fontWeight:"bold"}}, ann.severity.toUpperCase())
+              , React.createElement('span', {style:{fontSize:10,color:"#555"}}, "·")
+              , React.createElement('span', {style:{fontSize:10,color:"#666"}}, dayLabel)
+              , ann.adjustField&&ann.adjustField!=="general"&&ann.adjustValue!==0&&React.createElement('span', {style:{fontSize:10,color:"#888"}}, "· "+ann.adjustField+" "+(ann.adjustValue>0?"+":"")+ann.adjustValue)
+            )
+            , React.createElement('div', {style:{fontSize:12,color:"#c0b090",lineHeight:1.5}}, ann.message)
+            , ann.internalNote&&React.createElement('div', {style:{fontSize:10,color:"#555",marginTop:3,fontStyle:"italic"}}, "🔒 "+ann.internalNote)
+          )
+          , React.createElement('div', {style:{display:"flex",gap:4,flexShrink:0}}
+            , React.createElement('button', {onClick:function(){loadEdit(ann,i);},style:{padding:"3px 8px",borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#aaa",fontSize:11,cursor:"pointer"}}, "Edit")
+            , React.createElement('button', {onClick:function(){deleteAnnotation(i);},style:{padding:"3px 8px",borderRadius:7,border:"1px solid rgba(255,60,60,0.3)",background:"rgba(255,40,40,0.06)",color:"#ff8888",fontSize:11,cursor:"pointer"}}, "Del")
+          )
+        );
+      })
+    )
+
+    // Form
+    , React.createElement('div', {style:{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px"}}
+      , React.createElement('div', {style:{fontSize:11,color:"#ff7700",marginBottom:12,letterSpacing:1}}, iEditIdx!=null?"EDIT ANNOTATION":"NEW ANNOTATION")
+
+      // Severity
+      , React.createElement('div', {style:{marginBottom:10}}
+        , React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4}}, "SEVERITY")
+        , React.createElement('div', {style:{display:"flex",gap:5,flexWrap:"wrap"}},
+          Object.keys(ANN_LEVELS).map(function(k){
+            var s=ANN_LEVELS[k];
+            var on=iFSev===k;
+            return React.createElement('button', {key:k,onClick:function(){setFSev(k);},style:{padding:"4px 12px",borderRadius:8,border:"1px solid "+(on?s.col:"rgba(255,255,255,0.08)"),background:on?s.bg:"transparent",color:on?s.col:"#666",fontSize:11,cursor:"pointer"}}, s.icon+" "+k);
+          })
+        )
+      )
+
+      // Day selector
+      , React.createElement('div', {style:{marginBottom:10}}
+        , React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4}}, "APPLIES TO")
+        , React.createElement('div', {style:{display:"flex",gap:4,flexWrap:"wrap"}},
+          [React.createElement('button', {key:"all",onClick:function(){setFDay(-1);},style:{padding:"4px 10px",borderRadius:8,border:"1px solid "+(iFDay===-1?"#ff7700":"rgba(255,255,255,0.08)"),background:iFDay===-1?"rgba(255,119,0,0.12)":"transparent",color:iFDay===-1?"#ff9944":"#666",fontSize:11,cursor:"pointer"}}, "All days")]
+          .concat((forecastData||[]).slice(0,7).map(function(d,i){
+            var on=iFDay===i;
+            return React.createElement('button', {key:i,onClick:function(){setFDay(i);},style:{padding:"4px 10px",borderRadius:8,border:"1px solid "+(on?"#ff7700":"rgba(255,255,255,0.08)"),background:on?"rgba(255,119,0,0.12)":"transparent",color:on?"#ff9944":"#666",fontSize:11,cursor:"pointer"}}, d.date.split(" ").slice(0,2).join(" "));
+          }))
+        )
+      )
+
+      // Message
+      , React.createElement('div', {style:{marginBottom:10}}
+        , React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4}}, "PUBLIC MESSAGE — shown to all users")
+        , React.createElement('textarea', {value:iFMsg,onChange:function(e){setFMsg(e.target.value);},rows:3,placeholder:"e.g. The 28°C forecast for Thursday looks undercooked — high pressure is building and cloud cover may be less than modelled. Plan for 32–34°C.",style:Object.assign({},inputSty,{resize:"vertical",lineHeight:1.5})})
+      )
+
+      // Field adjustment hint
+      , React.createElement('div', {style:{marginBottom:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}
+        , React.createElement('div', {style:{flex:1}}
+          , React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4}}, "FIELD CONTEXT (optional — for display only)")
+          , React.createElement('select', {value:iFAdjF,onChange:function(e){setFAdjF(e.target.value);},style:Object.assign({},inputSty,{appearance:"none"})}
+            , ["general","temp","rain","wind","uv","pressure","humidity","snow"].map(function(f){return React.createElement('option', {key:f,value:f}, f);})
+          )
+        )
+        , React.createElement('div', {style:{flex:"0 0 100px"}}
+          , React.createElement('div', {style:{fontSize:10,color:"#555",marginBottom:4}}, "ADJ. HINT (±)")
+          , React.createElement('input', {type:"number",value:iFAdjV||0,onChange:function(e){setFAdjV(e.target.value);},style:inputSty,placeholder:"e.g. +3"})
+        )
+      )
+
+      // Internal note
+      , React.createElement('div', {style:{marginBottom:12}}
+        , React.createElement('button', {onClick:function(){setFShowNote(!iFShowNote);},style:{background:"none",border:"none",color:"#555",fontSize:11,cursor:"pointer",padding:0,marginBottom:4}}, (iFShowNote?"▾ ":"▸ ")+"Internal note (not shown to users)")
+        , iFShowNote&&React.createElement('textarea', {value:iFNote,onChange:function(e){setFNote(e.target.value);},rows:2,placeholder:"Private reasoning / source / model run reference…",style:Object.assign({},inputSty,{resize:"vertical"})})
+      )
+
+      // Actions
+      , React.createElement('div', {style:{display:"flex",gap:8,alignItems:"center"}}
+        , React.createElement('button', {onClick:saveAnnotation,disabled:iSaving,style:{padding:"9px 20px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#ff7700,#ff4400)",color:"#fff",fontSize:13,fontWeight:"bold",cursor:iSaving?"wait":"pointer"}}, iSaving?"Saving…":(iEditIdx!=null?"Update annotation":"Add annotation"))
+        , iEditIdx!=null&&React.createElement('button', {onClick:resetForm,style:{padding:"9px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#888",fontSize:12,cursor:"pointer"}}, "Cancel edit")
+      )
+      , iMsg&&React.createElement('div', {style:{marginTop:8,fontSize:11,color:iMsg.startsWith("✓")?"#44cc66":"#ff7744"}}, iMsg)
+    )
+    )
+  );
+}
+
+// ── AdminAnnotationsBanner ───────────────────────────────────────────────────
+// Public-facing display of annotations — shown on WeatherOverview to all users
+function AdminAnnotationsBanner(props){
+  var annotations=props.annotations,forecastData=props.forecastData,dayIndex=props.dayIndex;
+  // Filter: if dayIndex provided, show matching + all-day; otherwise show all
+  var visible=(annotations||[]).filter(function(ann){
+    if(dayIndex!=null)return ann.dayIndex<0||ann.dayIndex===dayIndex;
+    return true;
+  });
+  if(!visible.length)return null;
+  return(
+    React.createElement('div', {style:{marginBottom:dayIndex!=null?0:16}}
+    , visible.map(function(ann,i){
+      var s=ANN_LEVELS[ann.severity]||ANN_LEVELS.info;
+      var dayLabel=ann.dayIndex>=0&&forecastData&&forecastData[ann.dayIndex]?forecastData[ann.dayIndex].date:"";
+      return React.createElement('div', {key:ann.id||i,style:{background:s.bg,border:"1px solid "+s.border,borderRadius:dayIndex!=null?9:13,padding:dayIndex!=null?"8px 10px":"12px 14px",marginBottom:i<visible.length-1?6:0}}
+        , React.createElement('div', {style:{display:"flex",gap:7,alignItems:"flex-start"}}
+          , React.createElement('span', {style:{fontSize:dayIndex!=null?13:16,flexShrink:0}}, s.icon)
+          , React.createElement('div', {style:{flex:1}}
+            , React.createElement('div', {style:{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:2}}
+              , React.createElement('span', {style:{fontSize:10,fontWeight:"bold",color:s.col,textTransform:"uppercase",letterSpacing:1}}, ann.severity)
+              , dayLabel&&React.createElement('span', {style:{fontSize:10,color:"#555"}}, "·  "+dayLabel)
+              , ann.adjustField&&ann.adjustField!=="general"&&ann.adjustValue!==0&&React.createElement('span', {style:{fontSize:10,color:"#888"}}, "· "+ann.adjustField.charAt(0).toUpperCase()+ann.adjustField.slice(1)+" "+(ann.adjustValue>0?"+":"")+ann.adjustValue)
+              , React.createElement('span', {style:{fontSize:9,color:"#444",marginLeft:"auto"}}, "Editorial")
+            )
+            , React.createElement('div', {style:{fontSize:dayIndex!=null?11:12,color:"#c0b090",lineHeight:1.55}}, ann.message)
+          )
+        )
+      );
+    })
+    )
+  );
+}
+
 function App(){
 var fd=useState([]);var iFd=fd[0];var setFd=fd[1];
 var climAvg=useState(null);var iClimAvg=climAvg[0];var setClimAvg=climAvg[1];
@@ -4958,6 +5211,8 @@ var dr=useState("");var iDr=dr[0];var setDr=dr[1];
 var st=useState("");var iSt=st[0];var setSt=st[1];
 var searching=useState(false);var iSearching=searching[0];var setSearching=searching[1];
 var err=useState("");var iErr=err[0];var setErr=err[1];
+var annotations=useState([]);var iAnnotations=annotations[0];var setAnnotations=annotations[1];
+var showAdmin=useState(false);var iShowAdmin=showAdmin[0];var setShowAdmin=showAdmin[1];
 var ap=useState("overview");var iAp=ap[0];var setAp=ap[1];
 var units=useState({temp:"C",speed:"mph",rain:"mm",pressure:"mbar"});var iUnits=units[0];var setUnits=units[1];
 var searchResults=useState([]);var iSearchResults=searchResults[0];var setSearchResults=searchResults[1];
@@ -4993,10 +5248,18 @@ fbDb.collection("users").doc(u.uid).get().then(function(doc){if(doc.exists){var 
 });
 return unsub;
 },[]);
+// Fetch admin annotations whenever location changes
+useEffect(function(){
+  if(!iLat||!iLon)return;
+  var key=locKey(iLat,iLon);
+  fbDb.collection("adminAnnotations").doc(key).get().then(function(doc){
+    if(doc.exists&&doc.data().annotations){setAnnotations(doc.data().annotations);}
+    else{setAnnotations([]);}
+  }).catch(function(){setAnnotations([]);});
+},[iLat,iLon]);
 useEffect(function(){
 var params=new URLSearchParams(window.location.search);
-var locParam=params.get("location");
-if(locParam){fetchByName(locParam);return;}
+var locParam=params.get("location");if(locParam){fetchByName(locParam);return;}
 var last=null;try{last=JSON.parse(localStorage.getItem("twc_last_location"));}catch(e){}
 if(last&&last.name){fetchWeatherByCoords(last.lat,last.lon,last.name);return;}
 if(navigator.geolocation){
@@ -5158,6 +5421,7 @@ React.createElement('div', {style:pageSty}
 , React.createElement('button', {onClick:function(){setShowAlerts(true);},style:{padding:"8px 11px",borderRadius:10,border:"1px solid "+(alertCount>0?"rgba(255,80,0,0.4)":"rgba(255,255,255,0.13)"),background:alertCount>0?"rgba(255,60,0,0.1)":"rgba(255,255,255,0.04)",color:alertCount>0?"#ff9944":"#aaa",fontSize:12,cursor:"pointer",flexShrink:0}}, "Alerts", alertCount>0&&React.createElement('span', {style:{marginLeft:5,background:"#ff4400",color:"#fff",borderRadius:9,fontSize:10,padding:"1px 6px",fontFamily:"Georgia,serif"}}, alertCount))
 , React.createElement('button', {onClick:function(){setShowShare(true);},style:{padding:"8px 11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.13)",background:"rgba(255,255,255,0.04)",color:"#aaa",fontSize:12,cursor:"pointer",flexShrink:0}}, "Share")
 , React.createElement('button', {onClick:function(){setShowSettings(true);},style:{padding:"8px 11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.13)",background:"rgba(255,255,255,0.04)",color:"#aaa",fontSize:12,cursor:"pointer",flexShrink:0}}, "Settings")
+, isAdmin(iUser)&&React.createElement('button', {onClick:function(){setShowAdmin(!iShowAdmin);},style:{padding:"8px 11px",borderRadius:10,border:"1px solid rgba(255,100,0,0.4)",background:iShowAdmin?"rgba(255,80,0,0.15)":"rgba(255,80,0,0.07)",color:"#ff7744",fontSize:12,cursor:"pointer",flexShrink:0}}, "🔧 Admin"+(iAnnotations.length>0?" ("+iAnnotations.length+")":""))
 , React.createElement('div', {style:{marginLeft:"auto"}}, iUser?React.createElement('button', {onClick:function(){setShowSettings(true);},style:{background:"none",border:"none",color:"#4a9fd4",fontSize:12,cursor:"pointer",fontFamily:"Georgia,serif",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}, "👤 ", iUser.displayName||iUser.email):React.createElement('button', {onClick:function(){setShowAuth(true);},style:{padding:"8px 14px",borderRadius:10,border:"1px solid rgba(255,119,0,0.35)",background:"rgba(255,119,0,0.1)",color:"#ffaa44",fontSize:12,cursor:"pointer"}}, "Sign in / Sign up"))
 )
 , iErr&&React.createElement('div', {style:{color:"#ff6666",fontSize:12,marginBottom:12,textAlign:"center"}}, iErr)
@@ -5179,7 +5443,8 @@ React.createElement('div', {}
 , iRoles.includes("ski")&&React.createElement(SkiDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iRoles.includes("hiking")&&React.createElement(HikingDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,u:u})
 , iRoles.includes("aviation")&&React.createElement(AviationDashboard, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,hourlyRaw:iHr,u:u})
-, iAp==="overview"&&React.createElement(WeatherOverview, {forecastData:iFd,locationName:iLn,u:u,hourlyRaw:iHr,lat:iLat,lon:iLon,climAvg:iClimAvg,onShare:function(){setShowShare(true);}})
+, iShowAdmin&&isAdmin(iUser)&&React.createElement(AdminAnnotationsPanel, {lat:iLat,lon:iLon,locationName:iLn,forecastData:iFd,user:iUser,onClose:function(){setShowAdmin(false);},annotations:iAnnotations,setAnnotations:setAnnotations})
+, iAp==="overview"&&React.createElement(WeatherOverview, {forecastData:iFd,locationName:iLn,u:u,hourlyRaw:iHr,lat:iLat,lon:iLon,climAvg:iClimAvg,onShare:function(){setShowShare(true);},annotations:iAnnotations})
 , iAp==="ten"&&React.createElement(TenDayForecast, {forecastData:iFd,u:u,climAvg:iClimAvg})
 , iAp==="hourly"&&React.createElement(HourlyForecast, {forecastData:iFd,hourlyRaw:iHr,u:u})
 , iAp==="graphs"&&React.createElement(WeatherGraphs, {forecastData:iFd,hourlyRaw:iHr,u:u})
