@@ -5028,7 +5028,7 @@ function AdminAnnotationsPanel(props){
     var key=locKey(lat,lon);
     setMsg("Step 2: key="+key);
     setMsg("Step 3a: id…");
-    var annId=editIdx!=null?annotations[editIdx].id:Date.now().toString(36);
+    var annId=(editIdx!=null&&annotations[editIdx])?annotations[editIdx].id:Date.now().toString(36);
     setMsg("Step 3b: severity="+iFSev);
     setMsg("Step 3c: dayIndex="+iFDay);
     setMsg("Step 3d: message="+iFMsg.trim().slice(0,20));
