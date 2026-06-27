@@ -5023,26 +5023,11 @@ function AdminAnnotationsPanel(props){
   async function saveAnnotation(){
     if(!iFMsg.trim()){setMsg("Message is required.");return;}
     if(lat==null||lon==null){setMsg("Error: lat="+lat+" lon="+lon);return;}
-    setMsg("Step 1: starting…");
-    setSaving(true);
+    setSaving(true);setMsg("");
     var key=locKey(lat,lon);
-    setMsg("Step 2: key="+key);
-    setMsg("Step 3a: id…");
     var annId=(editIdx!=null&&annotations[editIdx])?annotations[editIdx].id:Date.now().toString(36);
-    setMsg("Step 3b: severity="+iFSev);
-    setMsg("Step 3c: dayIndex="+iFDay);
-    setMsg("Step 3d: message="+iFMsg.trim().slice(0,20));
-    setMsg("Step 3e: adjustField="+iFAdjF);
-    setMsg("Step 3f: adjustValue="+iFAdjV);
-    setMsg("Step 3g: note="+iFNote.trim().slice(0,10));
-    setMsg("Step 3h: locationName="+locationName);
-    setMsg("Step 3i: createdAt…");
-    var createdAt=new Date().toISOString();
-    setMsg("Step 3j: authorEmail…");
     var authorEmail=(user&&user.email)||"unknown";
-    setMsg("Step 3k: assembling object…");
-    var newAnn={id:annId,severity:iFSev,dayIndex:iFDay,message:iFMsg.trim(),adjustField:iFAdjF,adjustValue:parseFloat(iFAdjV)||0,internalNote:iFNote.trim(),locationName:locationName,createdAt:createdAt,authorEmail:authorEmail};
-    setMsg("Step 3 done.");
+    var newAnn={id:annId,severity:iFSev,dayIndex:iFDay,message:iFMsg.trim(),adjustField:iFAdjF,adjustValue:parseFloat(iFAdjV)||0,internalNote:iFNote.trim(),locationName:locationName,createdAt:new Date().toISOString(),authorEmail:authorEmail};
     var updated;
     if(editIdx!=null){
       updated=annotations.map(function(a,i){return i===editIdx?newAnn:a;});
