@@ -5654,10 +5654,10 @@ React.createElement('div', {style:pageSty}
       if(item.id==="dashboards"){
         return React.createElement('div', {key:"dashboards",style:{position:"relative"}}
           , React.createElement('button', {
-              onClick:function(){setShowDashMenu(!iShowDashMenu);setShowMoreMenu(false);},
+              onMouseDown:function(e){e.stopPropagation();setShowDashMenu(function(v){return !v;});setShowMoreMenu(false);},onClick:function(e){e.preventDefault();},
               style:{padding:"7px 12px",borderRadius:10,border:"1px solid "+(iAp==="dashboards"||iShowDashMenu?"rgba(255,119,0,0.5)":"rgba(255,255,255,0.1)"),background:iAp==="dashboards"||iShowDashMenu?"rgba(255,119,0,0.15)":"rgba(255,255,255,0.04)",color:iAp==="dashboards"||iShowDashMenu?"#ffaa44":"#888",fontSize:12,cursor:"pointer",fontFamily:"Georgia,serif",whiteSpace:"nowrap"}
             }, item.icon," ",item.label," ▾")
-          , iShowDashMenu&&React.createElement('div', {style:{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:200,background:"#0d1525",border:"1px solid rgba(255,255,255,0.12)",borderRadius:12,padding:6,minWidth:200,boxShadow:"0 8px 32px rgba(0,0,0,0.6)"}}
+          , iShowDashMenu&&React.createElement('div', {onMouseDown:function(e){e.stopPropagation();},style:{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:200,background:"#0d1525",border:"1px solid rgba(255,255,255,0.12)",borderRadius:12,padding:6,minWidth:200,boxShadow:"0 8px 32px rgba(0,0,0,0.6)"}}
             , USER_ROLES.filter(function(r){return r.id!=="casual";}).map(function(role){
                 var active=iRoles.includes(role.id);
                 return React.createElement('button', {
@@ -5682,10 +5682,10 @@ React.createElement('div', {style:pageSty}
       if(item.id==="more"){
         return React.createElement('div', {key:"more",style:{position:"relative"}}
           , React.createElement('button', {
-              onClick:function(){setShowMoreMenu(!iShowMoreMenu);setShowDashMenu(false);},
+              onMouseDown:function(e){e.stopPropagation();setShowMoreMenu(function(v){return !v;});setShowDashMenu(false);},onClick:function(e){e.preventDefault();},
               style:{padding:"7px 12px",borderRadius:10,border:"1px solid "+(iShowMoreMenu?"rgba(255,119,0,0.5)":"rgba(255,255,255,0.1)"),background:iShowMoreMenu?"rgba(255,119,0,0.15)":"rgba(255,255,255,0.04)",color:iShowMoreMenu?"#ffaa44":"#888",fontSize:12,cursor:"pointer",fontFamily:"Georgia,serif",whiteSpace:"nowrap"}
             }, item.icon," ",item.label," ▾")
-          , iShowMoreMenu&&React.createElement('div', {style:{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:200,background:"#0d1525",border:"1px solid rgba(255,255,255,0.12)",borderRadius:12,padding:6,minWidth:190,boxShadow:"0 8px 32px rgba(0,0,0,0.6)"}}
+          , iShowMoreMenu&&React.createElement('div', {onMouseDown:function(e){e.stopPropagation();},style:{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:200,background:"#0d1525",border:"1px solid rgba(255,255,255,0.12)",borderRadius:12,padding:6,minWidth:190,boxShadow:"0 8px 32px rgba(0,0,0,0.6)"}}
             , MORE_ITEMS.map(function(mi){
                 return React.createElement('button', {
                     key:mi.id,
