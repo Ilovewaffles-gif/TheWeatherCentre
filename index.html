@@ -5584,7 +5584,9 @@ function camsUvMaxForDate(dateStr){
 }
 var days=wJ.daily,hrs=wJ.hourly;
 var data=days.time.map(function(t,i){
-var temp=Math.round(days.temperature_2m_max[i]);
+var rawMax=days.temperature_2m_max[i];var rawMin=days.temperature_2m_min[i];
+if(rawMax==null||rawMin==null)return null;
+var temp=Math.round(rawMax);
 var code=days.weathercode[i]||0;
 var cloudEst=55,precipSum=days.precipitation_sum[i]||0;
 if(days.precipitation_probability_max[i]>=70)cloudEst=85;
@@ -5607,7 +5609,7 @@ var mergedHourlyUv=hrs.uv_index.map(function(gfsVal,i){
 });
 setHr({times:hrs.time,temps:hrs.temperature_2m,codes:hrs.weathercode,windMph:hrs.windspeed_10m.map(function(v){return Math.round((v||0)*0.621371);}),gusts:hrs.windgusts_10m.map(function(v){return Math.round((v||0)*0.621371);}),rain:hrs.precipitation_probability,rainMm:hrs.precipitation,snowMm:hrs.snowfall,rainOnly:hrs.rain,humidity:hrs.relativehumidity_2m,pressure:hrs.pressure_msl,cloud:hrs.cloudcover,uv:mergedHourlyUv,dewpoint:hrs.dewpoint_2m,vis:hrs.visibility,freezingLevel:hrs.freezing_level_height});
 if(wJ.minutely_15&&wJ.minutely_15.time){setM15({times:wJ.minutely_15.time,precip:wJ.minutely_15.precipitation,rain:wJ.minutely_15.rain,showers:wJ.minutely_15.showers,codes:wJ.minutely_15.weather_code});}else{setM15(null);}
-setFd(data);
+setFd(data.filter(function(d){return d!==null;}));
 setLat(place.latitude);setLon(place.longitude);
 var displayName=place.name+(place.admin1?", "+place.admin1:"")+(place.country_code?", "+place.country_code:"");
 setLn(displayName);
